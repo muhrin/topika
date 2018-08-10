@@ -126,16 +126,6 @@ class Channel(object):
         return self._impl.is_closed
 
     @property
-    def is_closing(self):
-        """Returns True if client-initiated closing of the channel is in
-        progress.
-
-        :rtype: bool
-
-        """
-        return self._impl.is_closing
-
-    @property
     def is_open(self):
         """Returns True if the channel is open.
 
@@ -172,7 +162,7 @@ class Channel(object):
 
         self._puback_return = ReturnedMessage(method, properties, body)
 
-    def _on_channel_closed(self, _channel, reply_code, reply_text):
+    def _on_channel_closed(self, _channel, reason):
         """Callback from impl notifying us that the channel has been closed.
         This may be as the result of user-, broker-, or internal connection
         clean-up initiated closing or meta-closing of the channel.
@@ -180,24 +170,23 @@ class Channel(object):
         See `pika.Channel.add_on_close_callback()` for additional documentation.
 
         :param pika.Channel _channel: (unused)
-        :param int reply_code:
-        :param str reply_text:
+        :param ChannelClosed reason: The reason for the channel closing
         """
+        closed_by_broker = isinstance(reason, pika.exceptions.ChannelClosedByBroker)
+
         LOGGER.debug('_on_channel_closed: by_broker=%s; (%s) %s; %r',
-                     self._impl.is_closed_by_broker,
-                     reply_code,
-                     reply_text,
+                     closed_by_broker,
+                     reason.reply_code,
+                     reason.reply_text,
                      self)
 
-        exception = pika.exceptions.ChannelClosed(reply_code, reply_text)
-
-        if self._impl.is_closed_by_broker:
+        if closed_by_broker:
             # Set exceptions on all the pending published message futures
             self._cleanup()
         else:
             if self._close_future:
-                self._close_future.set_result((reply_code, reply_text))
-        self._future_store.reject_all(exception)
+                self._close_future.set_result(reason)
+        self._future_store.reject_all(reason)
 
     @coroutine
     def close(self, reply_code=0, reply_text="Normal shutdown"):
@@ -711,14 +700,14 @@ class Channel(object):
         """
         with self._pending_future() as declare_ok_result:
             self._impl.exchange_declare(
+                callback=declare_ok_result.set_result,
                 exchange=exchange,
                 exchange_type=exchange_type,
                 passive=passive,
                 durable=durable,
                 auto_delete=auto_delete,
                 internal=internal,
-                arguments=arguments,
-                callback=declare_ok_result.set_result)
+                arguments=arguments)
 
             yield declare_ok_result
             raise Return(declare_ok_result.result())

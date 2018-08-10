@@ -1,12 +1,24 @@
+from future.standard_library import install_aliases
+
+# Enable urlparse.parse in python2/3
+install_aliases()
+
 import logging
+from functools import wraps, partial
 import pika
+from pika import ConnectionParameters
+from pika.credentials import ExternalCredentials, PlainCredentials
+from pika.spec import REPLY_SUCCESS
 import pika.exceptions
 import tornado.ioloop
+from tornado import gen, ioloop, locks
 from tornado.concurrent import Future
 from tornado.gen import coroutine, Return
+from urllib.parse import urlparse
 
 from .channel import Channel
 from . import common
+from . import exceptions
 from . import tools
 
 __all__ = ('Connection', 'connect')
@@ -15,38 +27,62 @@ LOGGER = logging.getLogger(__name__)
 
 
 class Connection(object):
+    __slots__ = (
+        'loop', '__closing', '_connection', 'future_store', '__sender_lock',
+        '_io_loop', '__connection_parameters', '__credentials',
+        '__write_lock', '_channels',
+    )
+
     CHANNEL_CLASS = Channel
 
     # Default for future that will be used when user initiates connection close
     _close_future = None
 
-    def __init__(self, pika_connection):
-        """
-        :param pika_connection: The pika tornado connection
-        :type pika_connection: :class:`pika.TornadoConnection`
-        """
-        # The actual pika connection object
-        self._connection = pika_connection
+    def __init__(self, url=None, host='localhost',
+                 port=5672, login='guest',
+                 password='guest', virtual_host='/',
+                 loop=None, **kwargs):
 
-        # Store of futures for pending operations
-        self._future_store = common.FutureStore(self.loop)
+        self.loop = loop if loop else ioloop.IOLoop.current()
+        self.future_store = common.FutureStore(loop=self.loop)
 
-        self._connection.add_on_close_callback(self._on_close)
+        self.__credentials = PlainCredentials(login, password) if login else ExternalCredentials()
+
+        self.__connection_parameters = ConnectionParameters(
+            host=host,
+            port=port,
+            credentials=self.__credentials,
+            virtual_host=virtual_host,
+        )
+
+        self._channels = dict()
+        self._connection = None
+        self.__closing = None
+        self.__write_lock = locks.Lock()
+
+    def __str__(self):
+        return 'amqp://{credentials}{host}:{port}/{vhost}'.format(
+            credentials="{0.username}:********@".format(self.__credentials) if isinstance(
+                self.__credentials, PlainCredentials) else '',
+            host=self.__connection_parameters.host,
+            port=self.__connection_parameters.port,
+            vhost=self.__connection_parameters.virtual_host,
+        )
+
+    def __repr__(self):
+        cls_name = self.__class__.__name__
+        return '<{0}: "{1}">'.format(cls_name, str(self))
 
     # TODO: Look into this for python 3.5+
-    # @coroutine
+    # @gen.coroutine
     # def __enter__(self):
     #     yield self.ensure_connected()
     #     raise Return(self)
     #
-    # @coroutine
+    # @gen.coroutine
     # def __exit__(self, exc_type, exc_val, exc_tb):
     #     yield self.close()
     #     raise Return(False)  # Don't supress any exceptions
-
-    @property
-    def loop(self):
-        return self._connection.ioloop
 
     def add_backpressure_callback(self, callback):
         return self._connection.add_backpressure_callback(common._CallbackWrapper(self, callback))
@@ -62,26 +98,6 @@ class Connection(object):
 
     def add_on_connection_unblocked_callback(self, callback):
         self._connection.add_on_connection_unblocked_callback(common._CallbackWrapper(self, callback))
-
-    def add_timeout(self, deadline, callback):
-        """Create a single-shot timer to fire after deadline seconds. Do not
-        confuse with Tornado's timeout where you pass in the time you want to
-        have your callback called. Only pass in the seconds until it's to be
-        called.
-
-        NOTE: the timer callbacks are dispatched only in the scope of
-        specially-designated methods: see
-        `BlockingConnection.process_data_events` and
-        `BlockingChannel.start_consuming`.
-
-        :param float deadline: The number of seconds to wait to call callback
-        :param callable callback: The callback method with the signature
-            callback()
-
-        :returns: opaque timer id
-
-        """
-        return self._connection.add_timeout(deadline, callback)
 
     def add_callback_threadsafe(self, callback):
         """Requests a call to the given function as soon as possible in the
@@ -105,25 +121,62 @@ class Connection(object):
         """
         self._connection.add_callback_threadsafe(callback)
 
-    def remove_timeout(self, timeout_id):
-        """Remove a timer if it's still in the timeout stack
+    def close(self):
+        """ Close AMQP connection """
+        LOGGER.debug("Closing AMQP connection")
 
-        :param timeout_id: The opaque timer id to remove
+        @gen.coroutine
+        def inner():
+            if self._connection:
+                self._connection.close()
+            yield self.closing
 
+        return tools.create_task(inner())
+
+    def __del__(self):
+        with tools.suppress():
+            if not self.is_closed:
+                self.close()
+
+    @gen.coroutine
+    def connect(self):
+        """ Connect to AMQP server. This method should be called after :func:`aio_pika.connection.Connection.__init__`
+
+        .. note::
+            This method is called by :func:`connect`. You shouldn't call it explicitly.
+
+        :rtype: :class:`pika.TornadoConnection`
         """
-        self._connection.remove_timeout(timeout_id)
 
-    @coroutine
-    def close(self, reply_code=200, reply_text='Normal shutdown'):
-        if self.is_closing or self.is_closed:
-            LOGGER.warning('Suppressing close request on %s', self)
-            return
+        if self.__closing and self.__closing.done():
+            raise RuntimeError("Invalid connection state")
 
-        self._close_future = Future()
-        self._connection.close(reply_code, reply_text)
-        yield self._close_future
+        with (yield self.__write_lock.acquire()):
+            self._connection = None
 
-    @coroutine
+            LOGGER.debug("Creating a new AMQP connection: %s", self)
+
+            connect_future = tools.create_future(loop=self.loop)
+
+            connection = pika.TornadoConnection(
+                parameters=self.__connection_parameters,
+                custom_ioloop=self.loop,
+                on_open_callback=connect_future.set_result,
+                on_close_callback=partial(self._on_connection_lost, connect_future),
+                on_open_error_callback=partial(self._on_connection_refused, connect_future),
+            )
+
+            connection.channel_cleanup_callback = self._channel_cleanup
+            connection.channel_cancel_callback = self._on_channel_cancel
+
+            result = yield connect_future
+
+            LOGGER.debug("Connection ready: %r", self)
+
+            self._connection = connection
+            raise gen.Return(result)
+
+    @gen.coroutine
     def channel(self, channel_number=None):
         """Create a new channel with the next available channel number or pass
         in a channel number to use. Must be non-zero if you would like to
@@ -134,7 +187,7 @@ class Connection(object):
         """
         self.ensure_connected()
 
-        with self._future_store.pending_future() as open_future:
+        with self.future_store.pending_future() as open_future:
             impl_channel = self._connection.channel(
                 channel_number=channel_number,
                 on_open_callback=open_future.set_result)
@@ -143,7 +196,7 @@ class Connection(object):
             yield open_future
 
         # Create our proxy channel
-        channel = self.CHANNEL_CLASS(impl_channel, self, self._future_store.create_child())
+        channel = self.CHANNEL_CLASS(impl_channel, self, self.future_store.create_child())
 
         # Link implementation channel with our proxy channel
         impl_channel._set_cookie(channel)
@@ -156,18 +209,24 @@ class Connection(object):
 
     @property
     def is_closed(self):
-        """
-        Returns a boolean reporting the current connection state.
-        """
-        return self._connection.is_closed
+        """ Is this connection closed """
+
+        if not self._connection:
+            return True
+
+        if self._closing.done():
+            return True
+
+        return False
 
     @property
-    def is_closing(self):
-        """
-        Returns True if connection is in the process of closing due to
-        client-initiated `close` request, but closing is not yet complete.
-        """
-        return self._connection.is_closing
+    def _closing(self):
+        self._ensure_cosing_future()
+        return self.__closing
+
+    def _ensure_cosing_future(self, force=False):
+        if self.__closing is None or force:
+            self.__closing = self.future_store.create_future()
 
     @property
     def is_open(self):
@@ -175,6 +234,77 @@ class Connection(object):
         Returns a boolean reporting the current connection state.
         """
         return self._connection.is_open
+
+    @property
+    @gen.coroutine
+    def closing(self):
+        """ Return coroutine which will be finished after connection close.
+
+        Example:
+
+        .. code-block:: python
+
+            import topika
+            import tornado.gen
+
+            @tornado.gen.coroutine
+            def async_close(connection):
+                yield tornado.gen.sleep(2)
+                yield connection.close()
+
+            @tornado.gen.coroutine
+            def main(loop):
+                connection = await aio_pika.connect(
+                    "amqp://guest:guest@127.0.0.1/"
+                )
+                topika.create_task(async_close(connection))
+
+                yield connection.closing
+
+        """
+        raise gen.Return((yield self._closing))
+
+    def _channel_cleanup(self, channel):
+        """
+        :type channel: :class:`pika.channel.Channel`
+        """
+        ch = self._channels.pop(channel.channel_number)  # type: Channel
+        ch._futures.reject_all(exceptions.ChannelClosed)
+
+    def _on_connection_refused(self, future, connection, reason):
+        """
+        :type future: :class:`tornado.concurrent.Future`
+        :type connection: :class:`pika.TornadoConnection`
+        :type reason: Exception
+        """
+        self._on_connection_lost(future, connection, reason)
+
+    def _on_connection_lost(self, future, connection, reason):
+        """
+        :type future: :class:`tornado.concurrent.Future`
+        :type connection: :class:`pika.TornadoConnection`
+        :type reason: Exception
+        """
+        if self.__closing and self.__closing.done():
+            return
+
+        if isinstance(reason, pika.exceptions.ConnectionClosedByClient) and \
+                reason.reply_code == REPLY_SUCCESS:
+            return self.__closing.set_result(reason)
+
+        self.future_store.reject_all(reason)
+
+        if future.done():
+            return
+
+        future.set_exception(reason)
+
+    def _on_channel_cancel(self, channel):
+        """
+        :type channel: :class:`pika.channel.Channel`
+        """
+        ch = self._channels.pop(channel.channel_number)  # type: Channel
+        ch._futures.reject_all(exceptions.ChannelClosed)
 
     #
     # Properties that reflect server capabilities for the current connection
@@ -226,7 +356,7 @@ class Connection(object):
 
     def ensure_connected(self):
         if self.is_closed:
-            raise pika.exceptions.ConnectionClosed("Connection is closed")
+            raise RuntimeError("Connection closed")
 
     def _on_close(self, connection, reply_code, reply_text):
         LOGGER.info('Connection closed: (%s) %s', reply_code, reply_text)
@@ -236,18 +366,23 @@ class Connection(object):
             self._close_future.set_result((reply_code, reply_text))
 
         # Set exceptions on all outstanding operations
-        self._future_store.reject_all(pika.exceptions.ConnectionClosed(reply_code, reply_text))
+        self.future_store.reject_all(pika.exceptions.ConnectionClosed(reply_code, reply_text))
 
 
-@coroutine
-def connect(connection_parameters, loop=None, connection_class=Connection, **kwargs):
-    """ Make connection to the broker
+@gen.coroutine
+def connect(url=None, host='localhost',
+            port=5672, login='guest',
+            password='guest', virtualhost='/',
+            loop=None, ssl_options=None,
+            connection_class=Connection, **kwargs):
+    """ Make connection to the broker.
 
     Example:
 
     .. code-block:: python
 
         import topika
+        import tornado.gen
 
         @tornado.gen.coroutine
         def main():
@@ -260,36 +395,83 @@ def connect(connection_parameters, loop=None, connection_class=Connection, **kwa
     .. code-block:: python
 
         import topika
+        import tornado.gen
 
         @tornado.gen.coroutine
-        async def main():
+        def main():
             connection = yield topika.connect()
 
-    :param connection_parameters: Pika connection parameters
-    :type connection_parameters: :class:`pika.Parameters`
-    :param loop: Event loop (:func:`tornado.ioloop.IOLoop.current()` when :class:`None`)
-    :param connection_class: Factory of a new connection
-    :param kwargs: addition parameters which will be passed to the pika connection.
-    :return: :class:`topika.connection.Connection`
+    .. note::
 
+        The available keys for ssl_options parameter are:
+            * cert_reqs
+            * certfile
+            * keyfile
+            * ssl_version
+
+        For an information on what the ssl_options can be set to reference the
+        `official Python documentation`_.
+
+        .. _official Python documentation: http://docs.python.org/3/library/ssl.html
+
+    URL string might be contain ssl parameters e.g.
+    `amqps://user:password@10.0.0.1//?ca_certs=ca.pem&certfile=cert.pem&keyfile=key.pem`
+
+    :param url: `RFC3986`_ formatted broker address. When :class:`None` \
+                will be used keyword arguments.
+    :type url: str
+    :param host: hostname of the broker
+    :type host: str
+    :param port: broker port 5672 by default
+    :type port: int
+    :param login: username string. `'guest'` by default. Provide empty string \
+                  for pika.credentials.ExternalCredentials usage.
+    :type login: str
+    :param password: password string. `'guest'` by default.
+    :type password: str
+    :param virtualhost: virtualhost parameter. `'/'` by default
+    :type virtualhost: str
+    :param ssl_options: A dict of values for the SSL connection.
+    :type ssl_options: dict
+    :param loop: Event loop (:func:`asyncio.get_event_loop()` \
+                 when :class:`None`)
+    :type loop: :class:`tornado.ioloop.IOLoop`
+    :param connection_class: Factory of a new connection
+    :param kwargs: addition parameters which will be passed to \
+                   the pika connection.
+    :rtype: :class:`topika.connection.Connection`
+
+    .. _RFC3986: https://tools.ietf.org/html/rfc3986
     .. _pika documentation: https://goo.gl/TdVuZ9
 
     """
-    loop = loop if loop else tornado.ioloop.IOLoop.current()
+    if url:
+        url = urlparse(str(url))
+        host = url.hostname or host
+        port = url.port or port
+        login = url.username or login
+        password = url.password or password
+        virtualhost = url.path[1:] if len(url.path) > 1 else virtualhost
 
-    open_future = tools.create_future(loop)
+        ssl_keys = (
+            'ca_certs',
+            'cert_reqs',
+            'certfile',
+            'keyfile',
+            'ssl_version',
+        )
 
-    def _on_close_error(conn, exc_or_msg):
-        open_future.set_exception(tools.ensure_connection_exception(exc_or_msg))
+        for key in ssl_keys:
+            if key not in url.query:
+                continue
 
-    pika_connection = pika.TornadoConnection(
-        parameters=connection_parameters,
-        on_open_callback=open_future.set_result,
-        on_open_error_callback=_on_close_error,
-        # on_close_callback=self._on_close,
-        custom_ioloop=loop
+            ssl_options[key] = url.query[key]
+
+    connection = connection_class(
+        host=host, port=port, login=login, password=password,
+        virtual_host=virtualhost, loop=loop,
+        ssl_options=ssl_options, **kwargs
     )
 
-    yield open_future
-    connection = connection_class(pika_connection, **kwargs)
-    raise Return(connection)
+    yield connection.connect()
+    raise gen.Return(connection)
