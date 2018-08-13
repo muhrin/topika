@@ -24,11 +24,6 @@ logging.basicConfig(filename=testfile, level=logging.INFO, format=FORMAT)
 AMQP_URL = furl(os.getenv("AMQP_URL", "amqp://guest:guest@127.0.0.1"))
 
 
-# Was here from aio-pika
-# if not AMQP_URL.path:
-#     AMQP_URL.path = '/'
-
-
 class BaseTestCase(AsyncTestCase):
     def setUp(self):
         super(BaseTestCase, self).setUp()

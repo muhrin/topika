@@ -1,4 +1,5 @@
 import contextlib
+import functools
 import pika.exceptions
 import tornado.concurrent
 from tornado import gen, ioloop
@@ -56,7 +57,7 @@ def wait(tasks, loop=None):
     Simple helper for gathering all passed :class:`Task`s.
 
     :param tasks: list of the :class:`asyncio.Task`s
-    :param loop: Event loop (:func:`asyncio.get_event_loop()` when :class:`None`)
+    :param loop: Event loop (:func:`tornado.ioloop.IOLoop.current()` when :class:`None`)
     :return: :class:`tuple` of results
     """
 
@@ -77,3 +78,6 @@ def ensure_connection_exception(exception_or_message):
         # We got a string message
         return pika.exceptions.AMQPConnectionError(exception_or_message)
 
+
+# Get rid of the stupid default replace_callback in tornado coroutine
+coroutine = functools.partial(gen._make_coroutine_wrapper, replace_callback=False)

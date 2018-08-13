@@ -211,8 +211,7 @@ class Channel(BaseChannel):
     @gen.coroutine
     def declare_exchange(self, name, type=exchange.ExchangeType.DIRECT,
                          durable=None, auto_delete=False,
-                         internal=False, passive=False, arguments=None, timeout=None
-                         ):
+                         internal=False, passive=False, arguments=None, timeout=None):
         """
         :type name: str
         :type type: ExchangeType
@@ -277,10 +276,8 @@ class Channel(BaseChannel):
     @BaseChannel._ensure_channel_is_open
     @gen.coroutine
     def declare_queue(self, name=None, durable=None, exclusive=False, passive=False,
-                      auto_delete=False, arguments=None, timeout=None
-                      ):
+                      auto_delete=False, arguments=None, timeout=None):
         """
-
         :param name: queue name
         :type name: str
         :param durable: Durability (queue survive broker restart)

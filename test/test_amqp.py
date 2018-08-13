@@ -767,7 +767,7 @@ class TestCase(BaseTestCase):
 
     @testing.gen_test
     def test_wrong_credentials(self):
-        amqp_url = AMQP_URL
+        amqp_url = AMQP_URL.copy()
         amqp_url.username = uuid.uuid4().hex
         amqp_url.password = uuid.uuid4().hex
 

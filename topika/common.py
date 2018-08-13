@@ -6,7 +6,7 @@ import tornado.gen
 from tornado.gen import coroutine, Return
 
 from . import exceptions
-from .tools import create_future
+from . import tools
 
 
 @enum.unique
@@ -55,7 +55,7 @@ def future_with_timeout(loop, timeout, future=None):
     :return:
     """
     loop = loop if loop else tornado.ioloop.IOLoop.current()
-    f = future or create_future(loop=loop)
+    f = future or tools.create_future(loop=loop)
 
     def on_timeout():
         if f.done():
@@ -150,7 +150,7 @@ class BaseChannel(object):
         """
         self.loop = loop
         self._futures = future_store
-        self._closing = create_future(loop=self.loop)
+        self._closing = tools.create_future(loop=self.loop)
 
     @property
     def is_closed(self):
@@ -163,7 +163,7 @@ class BaseChannel(object):
     @staticmethod
     def _ensure_channel_is_open(func):
         @contextlib.wraps(func)
-        @gen.coroutine
+        @tools.coroutine
         def wrap(self, *args, **kwargs):
             if self.is_closed:
                 raise exceptions.ChannelClosed

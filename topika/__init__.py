@@ -9,7 +9,7 @@ from .channel import Channel
 from .exchange import Exchange, ExchangeType
 from .message import Message, IncomingMessage, DeliveryMode
 from .queue import Queue
-# from .robust_connection import connect_robust
+from .robust_connection import connect_robust
 from .exceptions import AMQPException, MessageProcessError
 from .compat import ConnectionError, ConnectionRefusedError
 
@@ -20,7 +20,7 @@ __all__ = (
     # '__author__',
     # '__version__',
     'connect',
-    # 'connect_robust',
+    'connect_robust',
     'Connection',
     'Channel',
     'DeliveryMode',

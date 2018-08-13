@@ -36,6 +36,8 @@ class Exchange(BaseChannel):
                  durable=False, auto_delete=False, internal=False,
                  arguments=None):
         """
+        :type loop: :class:`tornado.ioloop.IOLoop`
+        :type future_store: :class:`FutureStore`
         :type channel: :class:`Channel`
         :type name: str
         :type type: ExchangeType
@@ -44,8 +46,6 @@ class Exchange(BaseChannel):
         :type internal: Optional[bool]
         :type passive: Optional[bool]
         :type arguments: dict or NoneType
-        :type loop: :class:`tornado.ioloop.IOLoop`
-        :type future_store: :class:`FutureStore`
         """
         super(Exchange, self).__init__(loop, future_store)
 
@@ -104,8 +104,7 @@ class Exchange(BaseChannel):
                 'exchange argument must be an exchange instance or str')
 
     @BaseChannel._ensure_channel_is_open
-    def bind(self, exchange,
-             routing_key='', arguments=None, timeout=None):
+    def bind(self, exchange, routing_key='', arguments=None, timeout=None):
 
         """ A binding can also be a relationship between two exchanges. This can be
         simply read as: this exchange is interested in messages from another exchange.
@@ -157,12 +156,10 @@ class Exchange(BaseChannel):
         return f
 
     @BaseChannel._ensure_channel_is_open
-    def unbind(self, exchange, routing_key='',
-               arguments=None, timeout=None):
-
+    def unbind(self, exchange, routing_key='', arguments=None, timeout=None):
         """ Remove exchange-to-exchange binding for this :class:`Exchange` instance
 
-        :param exchange: :class:`aio_pika.exchange.Exchange` instance
+        :param exchange: :class:`topika.exchange.Exchange` instance
         :type exchange: ExchangeType_
         :param routing_key: routing key
         :type routing_key: str

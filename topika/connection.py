@@ -438,8 +438,7 @@ def connect(url=None, host='localhost',
     :type virtualhost: str
     :param ssl_options: A dict of values for the SSL connection.
     :type ssl_options: dict
-    :param loop: Event loop (:func:`asyncio.get_event_loop()` \
-                 when :class:`None`)
+    :param loop: Event loop (:func:`tornado.ioloop.IOLoop.current()` when :class:`None`)
     :type loop: :class:`tornado.ioloop.IOLoop`
     :param connection_class: Factory of a new connection
     :param kwargs: addition parameters which will be passed to \

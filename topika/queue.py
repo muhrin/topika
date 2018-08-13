@@ -9,7 +9,7 @@ from typing import Any, Generator, Optional
 from .exchange import Exchange, ExchangeType_
 from .message import IncomingMessage
 from .common import BaseChannel, FutureStore
-from .tools import create_task, iscoroutinepartial
+from . import tools
 from .exceptions import QueueEmpty
 
 LOGGER = getLogger(__name__)
@@ -29,7 +29,7 @@ class Queue(BaseChannel):
                  channel, name, durable, exclusive, auto_delete, arguments):
         """
         :type loop: :class:`tornado.ioloop.IOLoop`
-        :type future_store: :class:`topika.FutureStore
+        :type future_store: :class:`topika.FutureStore`
         :type channel: :class:`pika.Channel`
         :type name: str
         :type durable: bool
@@ -95,8 +95,7 @@ class Queue(BaseChannel):
         return f
 
     @BaseChannel._ensure_channel_is_open
-    def bind(self, exchange, routing_key=None,
-             arguments=None, timeout=None):
+    def bind(self, exchange, routing_key=None,arguments=None, timeout=None):
 
         """ A binding is a relationship between an exchange and a queue. This can be
         simply read as: the queue is interested in messages from this exchange.
@@ -104,7 +103,7 @@ class Queue(BaseChannel):
         Bindings can take an extra routing_key parameter. To avoid the confusion
         with a basic_publish parameter we're going to call it a binding key.
 
-        :param exchange: :class:`aio_pika.exchange.Exchange` instance
+        :param exchange: :class:`topika.exchange.Exchange` instance
         :type exchange: :class:`ExchangeType`
         :param routing_key: routing key
         :type routing_key: str
@@ -115,7 +114,6 @@ class Queue(BaseChannel):
         :raises tornado.gen.TimeoutError: when the binding timeout period has elapsed.
         :rtype: :class:`tornado.concurrent.Future`
         """
-
         LOGGER.debug(
             "Binding queue %r: exchange=%r, routing_key=%r, arguments=%r",
             self, exchange, routing_key, arguments
@@ -134,12 +132,10 @@ class Queue(BaseChannel):
         return f
 
     @BaseChannel._ensure_channel_is_open
-    def unbind(self, exchange, routing_key,
-               arguments=None, timeout=None):
-
+    def unbind(self, exchange, routing_key, arguments=None, timeout=None):
         """ Remove binding from exchange for this :class:`Queue` instance
 
-        :param exchange: :class:`aio_pika.exchange.Exchange` instance
+        :param exchange: :class:`topika.exchange.Exchange` instance
         :type exchange: :class:`ExchangeType`
         :param routing_key: routing key
         :type routing_key: str
@@ -169,13 +165,13 @@ class Queue(BaseChannel):
         return f
 
     @BaseChannel._ensure_channel_is_open
-    @gen.coroutine
+    @tools.coroutine
     def consume(self, callback, no_ack=False,
                 exclusive=False, arguments=None,
                 consumer_tag=None, timeout=None):
         """ Start to consuming the :class:`Queue`.
 
-        :param timeout: :class:`asyncio.TimeoutError` will be raises when the
+        :param timeout: :class:`tornado.gen.TimeoutError` will be raises when the
                         Future was not finished after this time.
         :param callback: Consuming callback. Could be a coroutine.
         :type callback: :class:`FunctionType`
@@ -189,7 +185,7 @@ class Queue(BaseChannel):
         :type arguments: Optiona[dict]
         :param consumer_tag: optional consumer tag
 
-        :raises asyncio.TimeoutError: when the consuming timeout period has elapsed.
+        :raises tornado.gen.TimeoutError: when the consuming timeout period has elapsed.
         :rtype: class:`Generator[Any, None, ConsumerTag]`
         """
 
@@ -209,8 +205,8 @@ class Queue(BaseChannel):
                 no_ack=no_ack,
             )
 
-            if iscoroutinepartial(callback):
-                create_task(callback(message), loop=self.loop)
+            if tools.iscoroutinepartial(callback):
+                tools.create_task(callback(message), loop=self.loop)
             else:
                 self.loop.add_callback(callback, message)
 
@@ -229,7 +225,7 @@ class Queue(BaseChannel):
         raise gen.Return(consumer_tag)
 
     @BaseChannel._ensure_channel_is_open
-    def cancel(self, consumer_tag, timeout=None, nowait=False):
+    def cancel(self, consumer_tag, timeout=None):
         """ This method cancels a consumer. This does not affect already
         delivered messages, but it does mean the server will not send any more
         messages for that consumer. The client may receive an arbitrary number
@@ -244,19 +240,13 @@ class Queue(BaseChannel):
         :type consumer_tag: :class:`ConsumerTag`
         :param timeout: execution timeout
         :type timeout: int or NoneType
-        :param nowait: Do not expect a Basic.CancelOk response
-        :type nowait: bool
         :return: Basic.CancelOk when operation completed successfully
         """
         f = self._create_future(timeout)
         self._channel.basic_cancel(
-            None if nowait else f.set_result,
             consumer_tag=consumer_tag,
-            nowait=nowait
+            callback=f.set_result
         )
-
-        if nowait:
-            f.set_result(None)
 
         return f
 
