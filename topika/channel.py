@@ -14,6 +14,7 @@ from . import exchange
 from . import message
 from . import queue
 from . import tools
+from . import transaction
 
 LOGGER = logging.getLogger(__name__)
 
@@ -382,20 +383,23 @@ class Channel(BaseChannel):
 
             raise gen.Return((yield f))
 
-    # def transaction(self) -> Transaction:
-    #     if self._publisher_confirms:
-    #         raise RuntimeError("Cannot create transaction when publisher "
-    #                            "confirms are enabled")
-    #
-    #     tx = Transaction(self._channel, self._futures.get_child())
-    #
-    #     self.add_close_callback(tx.on_close_callback)
-    #
-    #     tx.closing.add_done_callback(
-    #         lambda _: self.remove_close_callback(tx.on_close_callback)
-    #     )
-    #
-    #     return tx
+    def transaction(self):
+        """
+        :rtype: :class:`topika.Transaction`
+        """
+        if self._publisher_confirms:
+            raise RuntimeError("Cannot create transaction when publisher "
+                               "confirms are enabled")
+
+        tx = transaction.Transaction(self._channel, self._futures.create_child())
+
+        self.add_close_callback(tx.on_close_callback)
+
+        tx.closing.add_done_callback(
+            lambda _: self.remove_close_callback(tx.on_close_callback)
+        )
+
+        return tx
 
     def __del__(self):
         with compat.suppress(Exception):

@@ -1174,53 +1174,56 @@ class TestCase(BaseTestCase):
 
         yield client.close()
 
+    @testing.gen_test
+    def test_transaction_when_publisher_confirms_error(self):
+        channel = yield self.create_channel(publisher_confirms=True)
+        with self.assertRaises(RuntimeError):
+            channel.transaction()
 
-#
-#     @gen.coroutine
-#     def test_transaction_when_publisher_confirms_error(self):
-#         channel = yield self.create_channel(publisher_confirms=True)
-#         with self.assertRaises(RuntimeError):
-#             channel.transaction()
-#
-#     @gen.coroutine
-#     def test_transaction_simple_commit(self):
-#         channel = yield self.create_channel(publisher_confirms=False)
-#         tx = channel.transaction()
-#         yield tx.select()
-#         yield tx.commit()
-#
-#     @gen.coroutine
-#     def test_transaction_simple_rollback(self):
-#         channel = yield self.create_channel(publisher_confirms=False)
-#         tx = channel.transaction()
-#         yield tx.select()
-#         yield tx.rollback()
-#
-#     @skip_for_py34
-#     def test_transaction_simple_async_commit(self):
-#         from ._async_await_cases import test_transaction_simple_async_commit as func
-#         return func(self)
-#
-#     @skip_for_py34
-#     def test_transaction_simple_async_rollback(self):
-#         from ._async_await_cases import test_transaction_simple_async_rollback as func
-#         return func(self)
-#
-#     @skip_for_py34
-#     def test_async_for_queue(self):
-#         from ._async_await_cases import test_async_for_queue as func
-#         return func(self)
-#
-#     @skip_for_py34
-#     def test_async_for_queue_context(self):
-#         from ._async_await_cases import test_async_for_queue_async_context as func
-#         return func(self)
-#
-#     @skip_for_py34
-#     def test_async_with_connection(self):
-#         from ._async_await_cases import test_async_connection_context as func
-#         return func(self)
-#
+    @testing.gen_test
+    def test_transaction_simple_commit(self):
+        channel = yield self.create_channel(publisher_confirms=False)
+        tx = channel.transaction()
+        yield tx.select()
+        yield tx.commit()
+
+    @testing.gen_test
+    def test_transaction_simple_rollback(self):
+        channel = yield self.create_channel(publisher_confirms=False)
+        tx = channel.transaction()
+        yield tx.select()
+        yield tx.rollback()
+
+    # @skip_for_py34
+    # @testing.gen_test
+    # def test_transaction_simple_async_commit(self):
+    #     from ._async_await_cases import test_transaction_simple_async_commit as func
+    #     return func(self)
+    #
+    # @skip_for_py34
+    # @testing.gen_test
+    # def test_transaction_simple_async_rollback(self):
+    #     from ._async_await_cases import test_transaction_simple_async_rollback as func
+    #     return func(self)
+    #
+    # @skip_for_py34
+    # @testing.gen_test
+    # def test_async_for_queue(self):
+    #     from ._async_await_cases import test_async_for_queue as func
+    #     return func(self)
+    #
+    # @skip_for_py34
+    # @testing.gen_test
+    # def test_async_for_queue_context(self):
+    #     from ._async_await_cases import test_async_for_queue_async_context as func
+    #     return func(self)
+    #
+    # @skip_for_py34
+    # @testing.gen_test
+    # def test_async_with_connection(self):
+    #     from ._async_await_cases import test_async_connection_context as func
+    #     return func(self)
+
 
 class MessageTestCase(unittest.TestCase):
     def test_message_copy(self):
