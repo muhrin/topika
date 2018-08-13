@@ -1,13 +1,22 @@
 import contextlib
+import enum
 import tornado.ioloop
+from tornado import gen
 import tornado.gen
 from tornado.gen import coroutine, Return
 
+from . import exceptions
 from .tools import create_future
 
 
+@enum.unique
+class ConfirmationTypes(enum.Enum):
+    ACK = 'ack'
+    NACK = 'nack'
+
+
 def ensure_coroutine(func_or_coro):
-    if tornado.gen.is_coroutine_function(func_or_coro):
+    if gen.is_coroutine_function(func_or_coro):
         return func_or_coro
     else:
         @coroutine
@@ -30,7 +39,7 @@ class _CallbackWrapper(object):
         self._proxy = source_proxy
         self._callback = ensure_coroutine(callback)
 
-    @coroutine
+    @gen.coroutine
     def __call__(self, unused_source, *args, **kwargs):
         result = yield self._callback(self._proxy, *args, **kwargs)
         raise Return(result)
@@ -129,3 +138,39 @@ class FutureStore(object):
             # Cleanup
             if future in self.__collection:
                 self.__collection.remove(future)
+
+
+class BaseChannel(object):
+    __slots__ = ('_channel_futures', 'loop', '_futures', '_closing')
+
+    def __init__(self, loop, future_store):
+        """
+        :type loop: :class:`tornado.ioloop.IOLoop`
+        :type future_store: :class:`FutureStore`
+        """
+        self.loop = loop
+        self._futures = future_store
+        self._closing = create_future(loop=self.loop)
+
+    @property
+    def is_closed(self):
+        return self._closing.done()
+
+    def _create_future(self, timeout=None):
+        f = self._futures.create_future(timeout)
+        return f
+
+    @staticmethod
+    def _ensure_channel_is_open(func):
+        @contextlib.wraps(func)
+        @gen.coroutine
+        def wrap(self, *args, **kwargs):
+            if self.is_closed:
+                raise exceptions.ChannelClosed
+
+            raise gen.Return((yield func(self, *args, **kwargs)))
+
+        return wrap
+
+    def __repr__(self):
+        return "<{}: {}>".format(self.__class__.__name__, getattr(self, 'name', id(self)))

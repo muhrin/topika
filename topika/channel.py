@@ -1,140 +1,130 @@
 import collections
-import contextlib
 import logging
 import pika
 import pika.exceptions
-from tornado.concurrent import Future
-from tornado.gen import coroutine, Return, WaitIterator
+from tornado import gen, locks
+from typing import Callable, Any, Generator, Union
 
+from .common import BaseChannel
+from .compat import Awaitable
 from . import common
+from . import exceptions
+from . import exchange
+from . import message
+from . import tools
 
-__all__ = ('Channel',)
+# from . import queue
 
 LOGGER = logging.getLogger(__name__)
 
-DeliveryInfo = collections.namedtuple('DeliveryInfo', ['tag', 'future'])
-
-ReturnedMessage = collections.namedtuple('ReturnedMessage', ['method', 'properties', 'body'])
+FunctionOrCoroutine = Union[Callable[[message.IncomingMessage], Any], Awaitable[message.IncomingMessage]]
 
 
-class Channel(object):
-    # Used as value_class with _CallbackResult for receiving Basic.GetOk args
-    _RxMessageArgs = collections.namedtuple(
-        'BlockingChannel__RxMessageArgs',
-        [
-            'channel',  # implementation pika.Channel instance
-            'method',  # Basic.GetOk
-            'properties',  # pika.spec.BasicProperties
-            'body'  # str, unicode, or bytes (python 3.x)
-        ])
+class Channel(BaseChannel):
+    """ Channel abstraction """
 
-    def __init__(self, pika_channel, connection, future_store):
+    # QUEUE_CLASS = Queue
+    EXCHANGE_CLASS = exchange.Exchange
+
+    __slots__ = ('_connection', '__closing', '_confirmations', '_delivery_tag',
+                 'loop', '_futures', '_channel', '_on_return_callbacks',
+                 'default_exchange', '_write_lock', '_channel_number',
+                 '_publisher_confirms', '_on_return_raises')
+
+    def __init__(self, connection, loop,
+                 future_store, channel_number=None,
+                 publisher_confirms=True, on_return_raises=False):
         """
         Create a new instance of the Channel.  Don't call this directly, this should
         be constructed by the connection.
 
-        :param pika_channel: The pika channel object
-        :type pika_channel: :class:`pika.Channel`
-        :param connection: The tornado connection
-        :type connection: :class:`TornadoConnection`
+        :type connection: :class:`pika.TornadoConnection`
+        :type loop: :class:`tornado.ioloop.IOLoop`
         :param future_store: The future store to use
         :type future_store: :class:`topika.common.FutureStore`
+        :type channel_number: int
+        :type publisher_confirms: bool
+        :type on_return_raises: bool
         """
-        self._impl = pika_channel
+        super(Channel, self).__init__(loop, future_store.create_child())
+
+        self._channel = None  # type: pika.channel.Channel
         self._connection = connection
-        self._future_store = future_store
+        self._confirmations = {}
+        self._on_return_callbacks = []
+        self._delivery_tag = 0
+        self._write_lock = locks.Lock()
+        self._channel_number = channel_number
+        self._publisher_confirms = publisher_confirms
 
-        # Whether RabbitMQ delivery confirmation has been enabled
-        self._delivery_confirmation = False
-        # These are only used when delivery confirmation is enabled
-        self._num_published = 0
-        # Information on sent messages, used to correlate to ack/nack or returned
-        # messages
-        self._delivery_info = collections.deque()
+        if not publisher_confirms and on_return_raises:
+            raise RuntimeError('on_return_raises must be uses with publisher confirms')
 
-        # Holds a ReturnedMessage object representing a message received via
-        # Basic.Return in publisher-acknowledgments mode.
-        self._puback_return = None
+        self._on_return_raises = on_return_raises
 
-        # self._impl.add_on_cancel_callback(self._on_consumer_cancelled_by_broker)
+        self.default_exchange = self.EXCHANGE_CLASS(
+            loop=self.loop,
+            future_store=self._futures.create_child(),
+            channel=self._channel,
+            publish_method=self._publish,
+            name='',
+            type=exchange.ExchangeType.DIRECT,
+            passive=None,
+            durable=None,
+            auto_delete=None,
+            internal=None,
+            arguments=None
+        )
 
-        # self._impl.add_callback(
-        #     self._basic_consume_ok_result.signal_once,
-        #     replies=[pika.spec.Basic.ConsumeOk],
-        #     one_shot=False)
+    @property
+    def _channel_maker(self):
+        return self._connection._connection.channel
 
-        self._impl.add_on_close_callback(self._on_channel_closed)
-        # Used when the user initiates a close channel operation
-        self._close_future = None
+    @property
+    def number(self):
+        return self._channel.channel_number
 
-        # self._impl.add_callback(
-        #     self._basic_getempty_result.set_value_once,
-        #     replies=[pika.spec.Basic.GetEmpty],
-        #     one_shot=False)
-
-        LOGGER.info("Created channel=%s", self.channel_number)
-
-    def __int__(self):
-        """Return the channel object as its channel number
-
-        NOTE: inherited from legacy BlockingConnection; might be error-prone;
-        use `channel_number` property instead.
-
-        :rtype: int
-
-        """
-        return self.channel_number
+    def __str__(self):
+        return "{0}".format(self.number if self._channel else "Not initialized channel")
 
     def __repr__(self):
-        return '<%s impl=%r>' % (self.__class__.__name__, self._impl)
+        return '<%s "%s#%s">' % (self.__class__.__name__, self._connection, self)
 
     # These can only potentially work on python 3.5+ with async_generator
-    # @coroutine
+    # @gen.coroutine
     # def __enter__(self):
-    #     raise Return(self)
+    #     raise gen.Return(self)
     #
-    # @coroutine
+    # @gen.coroutine
     # def __exit__(self, exc_type, exc_val, exc_tb):
     #     try:
     #         yield self.close()
     #     except (pika.exceptions.ConnectionClosed, pika.exceptions.ChannelClosed):
     #         pass
-    #     raise Return(False)
+    #     raise gen.Return(False)
 
-    def _cleanup(self):
-        """Clean up members that might inhibit garbage collection"""
-        self._num_published = 0
-        self._delivery_info = collections.deque()
-
-    @property
-    def channel_number(self):
-        """Channel number"""
-        return self._impl.channel_number
-
-    @property
-    def connection(self):
-        """The channel's BlockingConnection instance"""
-        return self._connection
-
-    @property
-    def is_closed(self):
-        """Returns True if the channel is closed.
-
-        :rtype: bool
-
+    def _on_channel_close(self, channel, reason):
         """
-        return self._impl.is_closed
-
-    @property
-    def is_open(self):
-        """Returns True if the channel is open.
-
-        :rtype: bool
-
+        :type channel: :class:`pika.channel.Channel`
+        :type reason: Exception
+        :return:
         """
-        return self._impl.is_open
+        # In case of normal closing, closing code should be unaltered (0 by default)
+        # See: https://github.com/pika/pika/blob/8d970e1/pika/channel.py#L84
 
-    def _on_puback_message_returned(self, channel, method, properties, body):
+        if reason.reply_code == 0:
+            self._closing.set_result(None)
+            log_method = LOGGER.debug
+        else:
+            self._closing.set_exception(reason)
+            log_method = LOGGER.error
+
+        log_method("Channel %r closed: %s", channel, reason)
+
+        self._futures.reject_all(reason)
+        return reason
+
+    def _on_return(self, channel, method, properties, body):
         """Called as the result of Basic.Return from broker in
         publisher-acknowledgements mode. Saves the info as a ReturnedMessage
         instance in self._puback_return.
@@ -146,864 +136,273 @@ class Channel(object):
         :type body: str, unicode
 
         """
-        assert channel is self._impl, (
-            channel.channel_number, self.channel_number)
+        msg = message.ReturnedMessage(channel=channel, body=body, envelope=method, properties=properties)
 
-        assert isinstance(method, pika.spec.Basic.Return), method
-        assert isinstance(properties, pika.spec.BasicProperties), (
-            properties)
+        for callback in self._on_return_callbacks:
+            self.loop.create_task(callback(msg))
 
-        LOGGER.warning(
-            "Published message was returned: _delivery_confirmation=%s; "
-            "channel=%s; method=%r; properties=%r; body_size=%d; "
-            "body_prefix=%.255r", self._delivery_confirmation,
-            channel.channel_number, method, properties,
-            len(body) if body is not None else None, body)
-
-        self._puback_return = ReturnedMessage(method, properties, body)
-
-    def _on_channel_closed(self, _channel, reason):
-        """Callback from impl notifying us that the channel has been closed.
-        This may be as the result of user-, broker-, or internal connection
-        clean-up initiated closing or meta-closing of the channel.
-
-        See `pika.Channel.add_on_close_callback()` for additional documentation.
-
-        :param pika.Channel _channel: (unused)
-        :param ChannelClosed reason: The reason for the channel closing
+    def add_close_callback(self, callback):
         """
-        closed_by_broker = isinstance(reason, pika.exceptions.ChannelClosedByBroker)
-
-        LOGGER.debug('_on_channel_closed: by_broker=%s; (%s) %s; %r',
-                     closed_by_broker,
-                     reason.reply_code,
-                     reason.reply_text,
-                     self)
-
-        if closed_by_broker:
-            # Set exceptions on all the pending published message futures
-            self._cleanup()
-        else:
-            if self._close_future:
-                self._close_future.set_result(reason)
-        self._future_store.reject_all(reason)
-
-    @coroutine
-    def close(self, reply_code=0, reply_text="Normal shutdown"):
-        """Will invoke a clean shutdown of the channel with the AMQP Broker.
-
-        :param int reply_code: The reply code to close the channel with
-        :param str reply_text: The reply text to close the channel with
-
+        :type callback: :class:`FunctionType`
         """
-        LOGGER.debug('Channel.close(%s, %s)', reply_code, reply_text)
+        self._closing.add_done_callback(lambda r: callback(r))
 
-        self._raise_if_not_open()
-        self._close_future = Future()
-
-        try:
-            # Close the channel
-            self._impl.close(reply_code=reply_code, reply_text=reply_text)
-            yield self._close_future
-        except Exception as e:
-            raise
-        finally:
-            self._cleanup()
-
-    @coroutine
-    def flow(self, active):
-        """Turn Channel flow control off and on.
-
-        NOTE: RabbitMQ doesn't support active=False; per
-        https://www.rabbitmq.com/specification.html: "active=false is not
-        supported by the server. Limiting prefetch with basic.qos provides much
-        better control"
-
-        For more information, please reference:
-
-        http://www.rabbitmq.com/amqp-0-9-1-reference.html#channel.flow
-
-        :param bool active: Turn flow on (True) or off (False)
-
-        :returns: True if broker will start or continue sending; False if not
-        :rtype: bool
-
+    def remove_close_callback(self, callback):
         """
-        with self._pending_future() as flow_ok_result:
-            self._impl.flow(active=active,
-                            callback=flow_ok_result.set_result)
-            yield flow_ok_result
-            raise Return(flow_ok_result.result())
-
-    def add_on_cancel_callback(self, callback):
-        """Pass a callback function that will be called when Basic.Cancel
-        is sent by the broker. The callback function should receive a method
-        frame parameter.
-
-        :param callable callback: a callable for handling broker's Basic.Cancel
-            notification with the call signature: callback(method_frame)
-            where method_frame is of type `pika.frame.Method` with method of
-            type `spec.Basic.Cancel`
-
+        :type callback: :class:`FunctionType`
         """
-        self._impl.add_on_cancel_callback(callback)
+        self._closing.remove_done_callback(callback)
 
-    def add_on_close_callback(self, callback):
-        """Pass a callback function that will be called when the channel is
-        closed. The callback function will receive the channel, the
-        reply_code (int) and the reply_text (string) describing why the channel was
-        closed.
-
-        If the channel is closed by broker via Channel.Close, the callback will
-        receive the reply_code/reply_text provided by the broker.
-
-        If channel closing is initiated by user (either directly of indirectly
-        by closing a connection containing the channel) and closing
-        concludes gracefully without Channel.Close from the broker and without
-        loss of connection, the callback will receive 0 as reply_code and empty
-        string as reply_text.
-
-        If channel was closed due to loss of connection, the callback will
-        receive reply_code and reply_text representing the loss of connection.
-
-        :param callable callback: The callback, having the signature:
-            callback(Channel, int reply_code, str reply_text)
-
-        """
-        self._impl.add_on_close_callback(common._CallbackWrapper(self, callback))
+    @property
+    @gen.coroutine
+    def closing(self):
+        """ Return future which will be finished after channel close. """
+        raise gen.Return((yield self._closing))
 
     def add_on_return_callback(self, callback):
-        """Pass a callback function that will be called when a published
-        message is rejected and returned by the server via `Basic.Return`.
-
-        :param callable callback: The method to call on callback with the
-            signature callback(channel, method, properties, body), where
-            channel: pika.Channel
-            method: pika.spec.Basic.Return
-            properties: pika.spec.BasicProperties
-            body: str, unicode, or bytes (python 3.x)
-
         """
-        self._impl.add_on_return_callback(common._CallbackWrapper(self, callback))
-
-    @coroutine
-    def basic_consume(self,
-                      queue,
-                      on_message_callback,
-                      auto_ack=False,
-                      exclusive=False,
-                      consumer_tag=None,
-                      arguments=None):
-        """Sends the AMQP command Basic.Consume to the broker and binds messages
-        for the consumer_tag to the consumer callback. If you do not pass in
-        a consumer_tag, one will be automatically generated for you. Returns
-        the consumer tag.
-
-        NOTE: the consumer callbacks are dispatched only in the scope of
-        specially-designated methods: see
-        `BlockingConnection.process_data_events` and
-        `BlockingChannel.start_consuming`.
-
-        For more information about Basic.Consume, see:
-        http://www.rabbitmq.com/amqp-0-9-1-reference.html#basic.consume
-
-        :param queue: The queue from which to consume
-        :type queue: str or unicode
-        :param callable on_message_callback: Required function for dispatching messages
-            to user, having the signature:
-            on_message_callback(channel, method, properties, body)
-                channel: BlockingChannel
-                method: spec.Basic.Deliver
-                properties: spec.BasicProperties
-                body: str or unicode
-        :param bool auto_ack: if set to True, automatic acknowledgement mode will be used
-                              (see http://www.rabbitmq.com/confirms.html). This corresponds
-                              with the 'no_ack' parameter in the basic.consume AMQP 0.9.1
-                              method
-        :param bool exclusive: Don't allow other consumers on the queue
-        :param consumer_tag: You may specify your own consumer tag; if left
-          empty, a consumer tag will be generated automatically
-        :type consumer_tag: str or unicode
-        :param dict arguments: Custom key/value pair arguments for the consumer
-        :returns: consumer tag
-        :rtype: str
-
-        :raises pika.exceptions.DuplicateConsumerTag: if consumer with given
-            consumer_tag is already present.
-
+        :param callback: :class:`FunctionOrCoroutine`
         """
-        if not callable(on_message_callback):
-            raise ValueError('callback on_message_callback must be callable; got %r'
-                             % on_message_callback)
+        self._on_return_callbacks.append(gen.coroutine(callback))
 
-        with self._pending_reply(pika.spec.Basic.ConsumeOk) as ok_result:
-            tag = self._impl.basic_consume(
-                on_message_callback=common._CallbackWrapper(self, on_message_callback),
-                queue=queue,
-                auto_ack=auto_ack,
-                exclusive=exclusive,
-                consumer_tag=consumer_tag,
-                arguments=arguments)
+    @gen.coroutine
+    def _create_channel(self, timeout=None):
+        future = self._create_future(timeout=timeout)
 
-            yield ok_result
-            raise Return(tag)
+        self._channel_maker(
+            channel_number=self._channel_number,
+            on_open_callback=future.set_result
+        )
 
-    @coroutine
-    def basic_cancel(self, consumer_tag=""):
-        """This method cancels a consumer. This does not affect already
-        delivered messages, but it does mean the server will not send any more
-        messages for that consumer. The client may receive an arbitrary number
-        of messages in between sending the cancel method and receiving the
-        cancel-ok reply.
+        channel = yield future  # type: pika.channel.Channel
+        if self._publisher_confirms:
+            channel.confirm_delivery(self._on_delivery_confirmation)
 
-        NOTE: When cancelling an auto_ack=False consumer, this implementation
-        automatically Nacks and suppresses any incoming messages that have not
-        yet been dispatched to the consumer's callback. However, when cancelling
-        a auto_ack=True consumer, this method will return any pending messages
-        that arrived before broker confirmed the cancellation.
+            if self._on_return_raises:
+                channel.add_on_return_callback(self._on_return_delivery)
 
-        :param str consumer_tag: Identifier for the consumer; the result of
-            passing a consumer_tag that was created on another channel is
-            undefined (bad things will happen)
+        channel.add_on_close_callback(self._on_channel_close)
+        channel.add_on_return_callback(self._on_return)
 
-        :returns: (NEW IN pika 0.10.0) empty sequence for a auto_ack=False
-            consumer; for a auto_ack=True consumer, returns a (possibly empty)
-            sequence of pending messages that arrived before broker confirmed
-            the cancellation (this is done instead of via consumer's callback in
-            order to prevent reentrancy/recursion. Each message is four-tuple:
-            (channel, method, properties, body)
-                channel: BlockingChannel
-                method: spec.Basic.Deliver
-                properties: spec.BasicProperties
-                body: str or unicode
-        """
-        with self._pending_future() as cancel_ok_result:
-            # Cancel the consumer; impl takes care of rejecting any
-            # additional deliveries that arrive for a auto_ack=False
-            # consumer
-            self._impl.basic_cancel(
-                consumer_tag=consumer_tag,
-                callback=cancel_ok_result.set_result)
+        raise gen.Return(channel)
 
-            # Flush output and wait for Basic.Cancel-ok or
-            # broker-initiated Basic.Cancel
-            yield cancel_ok_result
+    @gen.coroutine
+    def initialize(self, timeout=None):
+        with (yield self._write_lock.acquire()):
+            if self._closing.done():
+                raise RuntimeError("Can't initialize closed channel")
 
-    @coroutine
-    def basic_ack(self, delivery_tag=0, multiple=False):
-        """Acknowledge one or more messages. When sent by the client, this
-        method acknowledges one or more messages delivered via the Deliver or
-        Get-Ok methods. When sent by server, this method acknowledges one or
-        more messages published with the Publish method on a channel in
-        confirm mode. The acknowledgement can be for a single message or a
-        set of messages up to and including a specific message.
+            self._channel = yield self._create_channel(timeout)
+            self._delivery_tag = 0
 
-        :param int delivery_tag: The server-assigned delivery tag
-        :param bool multiple: If set to True, the delivery tag is treated as
-                              "up to and including", so that multiple messages
-                              can be acknowledged with a single method. If set
-                              to False, the delivery tag refers to a single
-                              message. If the multiple field is 1, and the
-                              delivery tag is zero, this indicates
-                              acknowledgement of all outstanding messages.
-        """
-        self._impl.basic_ack(delivery_tag=delivery_tag, multiple=multiple)
+    def _on_return_delivery(self, channel, method_frame, properties, body):
+        f = self._confirmations.pop(int(properties.headers.get('delivery-tag')))
+        f.set_exception(exceptions.UnroutableError([body]))
 
-    @coroutine
-    def basic_nack(self, delivery_tag=None, multiple=False, requeue=True):
-        """This method allows a client to reject one or more incoming messages.
-        It can be used to interrupt and cancel large incoming messages, or
-        return untreatable messages to their original queue.
+    def _on_delivery_confirmation(self, method_frame):
+        future = self._confirmations.pop(method_frame.method.delivery_tag, None)
 
-        :param int delivery-tag: The server-assigned delivery tag
-        :param bool multiple: If set to True, the delivery tag is treated as
-                              "up to and including", so that multiple messages
-                              can be acknowledged with a single method. If set
-                              to False, the delivery tag refers to a single
-                              message. If the multiple field is 1, and the
-                              delivery tag is zero, this indicates
-                              acknowledgement of all outstanding messages.
-        :param bool requeue: If requeue is true, the server will attempt to
-                             requeue the message. If requeue is false or the
-                             requeue attempt fails the messages are discarded or
-                             dead-lettered.
-
-        """
-        self._impl.basic_nack(delivery_tag=delivery_tag, multiple=multiple,
-                              requeue=requeue)
-
-    @coroutine
-    def basic_get(self, queue, auto_ack=False):
-        """Get a single message from the AMQP broker. Returns a sequence with
-        the method frame, message properties, and body.
-
-        :param queue: Name of queue from which to get a message
-        :type queue: str or unicode
-        :param bool auto_ack: Tell the broker to not expect a reply
-        :returns: a three-tuple; (None, None, None) if the queue was empty;
-            otherwise (method, properties, body); NOTE: body may be None
-        :rtype: (None, None, None)|(spec.Basic.GetOk,
-                                    spec.BasicProperties,
-                                    str or unicode or None)
-        """
-        # NOTE: nested with for python 2.6 compatibility
-        with self._pending_future() as get_ok_result:
-            with self._pending_reply(pika.spec.Basic.GetEmpty) as basic_getempty_result:
-                self._impl.basic_get(queue=queue,
-                                     auto_ack=auto_ack,
-                                     callback=lambda ch, meth, props, body:
-                                     get_ok_result.set_result(self._RxMessageArgs(ch, meth, props, body)))
-
-                # Get whichever finishes first
-                yield WaitIterator(get_ok_result, basic_getempty_result).next()
-
-                if get_ok_result.done():
-                    evt = get_ok_result.result()
-                    raise Return((evt.method, evt.properties, evt.body))
-                else:
-                    assert basic_getempty_result.done(), (
-                        "wait completed without GetOk and GetEmpty")
-                    raise Return((None, None, None))
-
-    @coroutine
-    def basic_publish(self, exchange, routing_key, body,
-                      properties=None,
-                      mandatory=False,
-                      immediate=False):
-        """Publish to the channel with the given exchange, routing key and body.
-        Returns a boolean value indicating the success of the operation.
-
-        This is the legacy BlockingChannel method for publishing. See also
-        `BlockingChannel.publish` that provides more information about failures.
-
-        For more information on basic_publish and what the parameters do, see:
-
-            http://www.rabbitmq.com/amqp-0-9-1-reference.html#basic.publish
-
-        NOTE: mandatory and immediate may be enabled even without delivery
-          confirmation, but in the absence of delivery confirmation the
-          synchronous implementation has no way to know how long to wait for
-          the Basic.Return or lack thereof.
-
-        :param exchange: The exchange to publish to
-        :type exchange: str or unicode
-        :param routing_key: The routing key to bind on
-        :type routing_key: str or unicode
-        :param body: The message body; empty string if no body
-        :type body: bytes
-        :param pika.spec.BasicProperties properties: message properties
-        :param bool mandatory: The mandatory flag
-        :param bool immediate: The immediate flag
-
-        :returns: True if delivery confirmation is not enabled (NEW in pika
-            0.10.0); otherwise returns False if the message could not be
-            delivered (Basic.nack and/or Basic.Return) and True if the message
-            was delivered (Basic.ack and no Basic.Return)
-        """
-        try:
-            yield self.publish(exchange, routing_key, body, properties,
-                               mandatory, immediate)
-        except (pika.exceptions.NackError, pika.exceptions.UnroutableError):
-            raise Return(False)
-        else:
-            raise Return(True)
-
-    @coroutine
-    def publish(self, exchange, routing_key, body,
-                properties=None, mandatory=False, immediate=False):
-        """Publish to the channel with the given exchange, routing key, and
-        body.
-
-        For more information on basic_publish and what the parameters do, see:
-
-            http://www.rabbitmq.com/amqp-0-9-1-reference.html#basic.publish
-
-        NOTE: mandatory and immediate may be enabled even without delivery
-          confirmation, but in the absence of delivery confirmation the
-          synchronous implementation has no way to know how long to wait for
-          the Basic.Return.
-
-        :param exchange: The exchange to publish to
-        :type exchange: str or unicode
-        :param routing_key: The routing key to bind on
-        :type routing_key: str or unicode
-        :param body: The message body; empty string if no body
-        :type body: bytes
-        :param pika.spec.BasicProperties properties: message properties
-        :param bool mandatory: The mandatory flag
-        :param bool immediate: The immediate flag
-
-        :raises UnroutableError: raised when a message published in
-            publisher-acknowledgments mode (see
-            `BlockingChannel.confirm_delivery`) is returned via `Basic.Return`
-            followed by `Basic.Ack`.
-        :raises NackError: raised when a message published in
-            publisher-acknowledgements mode is Nack'ed by the broker. See
-            `BlockingChannel.confirm_delivery`.
-
-        """
-        if self._delivery_confirmation:
-            # In publisher-acknowledgments mode
-
-            with self._pending_future() as delivery_future:
-                self._num_published += 1
-                self._delivery_info.append(DeliveryInfo(self._num_published, delivery_future))
-
-                self._impl.basic_publish(exchange=exchange,
-                                         routing_key=routing_key,
-                                         body=body,
-                                         properties=properties,
-                                         mandatory=mandatory,
-                                         immediate=immediate)
-
-                result = yield delivery_future
-
-            if result == pika.spec.Basic.Nack.NAME:
-                # Broker was unable to process the message due to internal
-                # error
-                LOGGER.warning(
-                    "Message was Nack'ed by broker: nack=%r; channel=%s; "
-                    "exchange=%s; routing_key=%s; mandatory=%r; "
-                    "immediate=%r", result, self.channel_number,
-                    exchange, routing_key, mandatory, immediate)
-                if self._puback_return is not None:
-                    returned_messages = [self._puback_return]
-                    self._puback_return = None
-                else:
-                    returned_messages = []
-                raise pika.exceptions.NackError(returned_messages)
-
-            else:
-                assert result == pika.spec.Basic.Ack.NAME, result
-
-                if self._puback_return is not None:
-                    # Unroutable message was returned
-                    messages = [self._puback_return]
-                    self._puback_return = None
-                    raise pika.exceptions.UnroutableError(messages)
-        else:
-            # In non-publisher-acknowledgments mode
-            self._impl.basic_publish(exchange=exchange,
-                                     routing_key=routing_key,
-                                     body=body,
-                                     properties=properties,
-                                     mandatory=mandatory,
-                                     immediate=immediate)
-
-    @coroutine
-    def basic_qos(self, prefetch_size=0, prefetch_count=0, all_channels=False):
-        """Specify quality of service. This method requests a specific quality
-        of service. The QoS can be specified for the current channel or for all
-        channels on the connection. The client can request that messages be sent
-        in advance so that when the client finishes processing a message, the
-        following message is already held locally, rather than needing to be
-        sent down the channel. Prefetching gives a performance improvement.
-
-        :param int prefetch_size:  This field specifies the prefetch window
-                                   size. The server will send a message in
-                                   advance if it is equal to or smaller in size
-                                   than the available prefetch size (and also
-                                   falls into other prefetch limits). May be set
-                                   to zero, meaning "no specific limit",
-                                   although other prefetch limits may still
-                                   apply. The prefetch-size is ignored if the
-                                   no-ack option is set in the consumer.
-        :param int prefetch_count: Specifies a prefetch window in terms of whole
-                                   messages. This field may be used in
-                                   combination with the prefetch-size field; a
-                                   message will only be sent in advance if both
-                                   prefetch windows (and those at the channel
-                                   and connection level) allow it. The
-                                   prefetch-count is ignored if the no-ack
-                                   option is set in the consumer.
-        :param bool all_channels: Should the QoS apply to all channels
-
-        """
-        with self._pending_future() as qos_ok_result:
-            self._impl.basic_qos(callback=qos_ok_result.set_result,
-                                 prefetch_size=prefetch_size,
-                                 prefetch_count=prefetch_count,
-                                 all_channels=all_channels)
-
-            result = yield qos_ok_result
-            raise Return(result)
-
-    @coroutine
-    def basic_reject(self, delivery_tag=None, requeue=True):
-        """Reject an incoming message. This method allows a client to reject a
-        message. It can be used to interrupt and cancel large incoming messages,
-        or return untreatable messages to their original queue.
-
-        :param int delivery_tag: The server-assigned delivery tag
-        :param bool requeue: If requeue is true, the server will attempt to
-                             requeue the message. If requeue is false or the
-                             requeue attempt fails the messages are discarded or
-                             dead-lettered.
-
-        """
-        self._impl.basic_reject(delivery_tag=delivery_tag, requeue=requeue)
-
-    @coroutine
-    def confirm_delivery(self):
-        """Turn on RabbitMQ-proprietary Confirm mode in the channel.
-
-        For more information see:
-            http://www.rabbitmq.com/extensions.html#confirms
-        """
-        if self._delivery_confirmation:
-            LOGGER.error('confirm_delivery: confirmation was already enabled '
-                         'on channel=%s', self.channel_number)
+        if not future:
+            LOGGER.info("Unknown delivery tag %d for message confirmation \"%s\"",
+                        method_frame.method.delivery_tag, method_frame.method.NAME)
             return
 
-        with self._pending_future() as confirm_future:
-            self._impl.confirm_delivery(
-                self._on_message_ack_nack,
-                callback=confirm_future.set_result)
+        try:
+            confirmation_type = common.ConfirmationTypes(method_frame.method.NAME.split('.')[1].lower())
 
-            # Wait for the channel to respond
-            yield confirm_future
-        self._delivery_confirmation = True
+            if confirmation_type == common.ConfirmationTypes.ACK:
+                future.set_result(True)
+            elif confirmation_type == common.ConfirmationTypes.NACK:
+                future.set_exception(exceptions.NackError(method_frame))
+        except ValueError:
+            future.set_exception(RuntimeError('Unknown method frame', method_frame))
+        except Exception as e:
+            future.set_exception(e)
 
-        # Unroutable messages returned after this point will be in the context
-        # of publisher acknowledgments
-        self._impl.add_on_return_callback(self._on_puback_message_returned)
-
-    @coroutine
-    def exchange_declare(self, exchange=None,
-                         exchange_type='direct', passive=False, durable=False,
-                         auto_delete=False, internal=False,
-                         arguments=None):
-        """This method creates an exchange if it does not already exist, and if
-        the exchange exists, verifies that it is of the correct and expected
-        class.
-
-        If passive set, the server will reply with Declare-Ok if the exchange
-        already exists with the same name, and raise an error if not and if the
-        exchange does not already exist, the server MUST raise a channel
-        exception with reply code 404 (not found).
-
-        :param exchange: The exchange name consists of a non-empty sequence of
-                          these characters: letters, digits, hyphen, underscore,
-                          period, or colon.
-        :type exchange: str or unicode
-        :param str exchange_type: The exchange type to use
-        :param bool passive: Perform a declare or just check to see if it exists
-        :param bool durable: Survive a reboot of RabbitMQ
-        :param bool auto_delete: Remove when no more queues are bound to it
-        :param bool internal: Can only be published to by other exchanges
-        :param dict arguments: Custom key/value pair arguments for the exchange
-
-        :returns: Method frame from the Exchange.Declare-ok response
-        :rtype: `pika.frame.Method` having `method` attribute of type
-          `spec.Exchange.DeclareOk`
-
+    @BaseChannel._ensure_channel_is_open
+    @gen.coroutine
+    def declare_exchange(self, name, type=exchange.ExchangeType.DIRECT,
+                         durable=None, auto_delete=False,
+                         internal=False, passive=False, arguments=None, timeout=None
+                         ):
         """
-        with self._pending_future() as declare_ok_result:
-            self._impl.exchange_declare(
-                callback=declare_ok_result.set_result,
-                exchange=exchange,
-                exchange_type=exchange_type,
-                passive=passive,
-                durable=durable,
-                auto_delete=auto_delete,
-                internal=internal,
-                arguments=arguments)
-
-            yield declare_ok_result
-            raise Return(declare_ok_result.result())
-
-    @coroutine
-    def exchange_delete(self, exchange=None, if_unused=False):
-        """Delete the exchange.
-
-        :param exchange: The exchange name
-        :type exchange: str or unicode
-        :param bool if_unused: only delete if the exchange is unused
-
-        :returns: Method frame from the Exchange.Delete-ok response
-        :rtype: `pika.frame.Method` having `method` attribute of type
-          `spec.Exchange.DeleteOk`
-
+        :type name: str
+        :type type: ExchangeType
+        :type durable: Optional[bool]
+        :type auto_delete: Optional[bool]
+        :type internal: Optional[bool]
+        :type passive: Optional[bool]
+        :type arguments: dict or NoneType
+        :type timeout: int
+        :rtype: :class:`Generator[Any, None, exchange.Exchange]`
         """
-        with self._pending_future() as delete_ok_result:
-            self._impl.exchange_delete(
-                exchange=exchange,
-                if_unused=if_unused,
-                callback=delete_ok_result.set_result)
 
-            yield delete_ok_result
-            raise Return(delete_ok_result.result())
+        with (yield self._write_lock.acquire()):
+            if auto_delete and durable is None:
+                durable = False
 
-    @coroutine
-    def exchange_bind(self, destination=None, source=None, routing_key='',
-                      arguments=None):
-        """Bind an exchange to another exchange.
+            exchange = self.EXCHANGE_CLASS(
+                loop=self.loop, future_store=self._futures.create_child(),
+                channel=self._channel, publish_method=self._publish, name=name, type=type,
+                passive=passive, durable=durable, auto_delete=auto_delete, internal=internal,
+                arguments=arguments
+            )
 
-        :param destination: The destination exchange to bind
-        :type destination: str or unicode
-        :param source: The source exchange to bind to
-        :type source: str or unicode
-        :param routing_key: The routing key to bind on
-        :type routing_key: str or unicode
-        :param dict arguments: Custom key/value pair arguments for the binding
+            yield exchange.declare(timeout=timeout)
 
-        :returns: Method frame from the Exchange.Bind-ok response
-        :rtype: `pika.frame.Method` having `method` attribute of type
-          `spec.Exchange.BindOk`
+            LOGGER.debug("Exchange declared %r", exchange)
 
+            raise gen.Return(exchange)
+
+    @BaseChannel._ensure_channel_is_open
+    @gen.coroutine
+    def _publish(self, queue_name, routing_key, body, properties, mandatory, immediate):
         """
-        with self._pending_future() as \
-                bind_ok_result:
-            self._impl.exchange_bind(
-                destination=destination,
-                source=source,
-                routing_key=routing_key,
-                arguments=arguments,
-                callback=bind_ok_result.set_result)
-
-            yield bind_ok_result
-            raise Return(bind_ok_result.result())
-
-    @coroutine
-    def exchange_unbind(self, destination=None, source=None, routing_key='',
-                        arguments=None):
-        """Unbind an exchange from another exchange.
-
-        :param destination: The destination exchange to unbind
-        :type destination: str or unicode
-        :param source: The source exchange to unbind from
-        :type source: str or unicode
-        :param routing_key: The routing key to unbind
-        :type routing_key: str or unicode
-        :param dict arguments: Custom key/value pair arguments for the binding
-
-        :returns: Method frame from the Exchange.Unbind-ok response
-        :rtype: `pika.frame.Method` having `method` attribute of type
-          `spec.Exchange.UnbindOk`
-
+        :type properties: :class:`pika.BasicProperties`
         """
-        with self._pending_future() as unbind_ok_result:
-            self._impl.exchange_unbind(
-                destination=destination,
-                source=source,
-                routing_key=routing_key,
-                arguments=arguments,
-                callback=unbind_ok_result.set_result)
+        with (yield self._write_lock.acquire()):
+            while self._connection.is_closed:
+                LOGGER.debug("Can't publish message because connection is inactive")
+                yield gen.sleep(1)
 
-            yield unbind_ok_result
-            raise Return(unbind_ok_result.result())
+            f = self._create_future()
+            self._delivery_tag += 1
 
-    @coroutine
-    def queue_declare(self, queue, passive=False, durable=False,
-                      exclusive=False, auto_delete=False,
-                      arguments=None):
-        """Declare queue, create if needed. This method creates or checks a
-        queue. When creating a new queue the client can specify various
-        properties that control the durability of the queue and its contents,
-        and the level of sharing for the queue.
+            if self._on_return_raises:
+                properties.headers = properties.headers or {}
+                properties.headers['delivery-tag'] = str(self._delivery_tag)
 
-        Use an empty string as the queue name for the broker to auto-generate
-        one. Retrieve this auto-generated queue name from the returned
-        `spec.Queue.DeclareOk` method frame.
+            try:
+                self._channel.basic_publish(queue_name, routing_key, body, properties, mandatory, immediate)
+            except (AttributeError, RuntimeError) as exc:
+                LOGGER.exception("Failed to send data to client (connection unexpectedly closed)")
+                self._on_channel_close(self._channel, exc)
+                self._connection._connection.close(reply_code=500, reply_text="Incorrect state")
+            else:
+                if self._publisher_confirms:
+                    self._confirmations[self._delivery_tag] = f
+                else:
+                    f.set_result(None)
 
-        :param queue: The queue name
-        :type queue: str or unicode; if empty string, the broker will create a
-          unique queue name;
-        :param bool passive: Only check to see if the queue exists and raise
-          `ChannelClosed` if it doesn't;
-        :param bool durable: Survive reboots of the broker
-        :param bool exclusive: Only allow access by the current connection
-        :param bool auto_delete: Delete after consumer cancels or disconnects
-        :param dict arguments: Custom key/value arguments for the queue
+            raise gen.Return((yield f))
 
-        :returns: Method frame from the Queue.Declare-ok response
-        :rtype: `pika.frame.Method` having `method` attribute of type
-          `spec.Queue.DeclareOk`
+    # @BaseChannel._ensure_channel_is_open
+    # @gen.coroutine
+    # def declare_queue(self, name: str=None, *, durable: bool=None, exclusive: bool=False, passive: bool=False,
+    #                   auto_delete: bool=False, arguments: dict=None, timeout: int=None
+    #                   ) -> Generator[Any, None, Queue]:
+    #     """
+    #
+    #     :param name: queue name
+    #     :param durable: Durability (queue survive broker restart)
+    #     :param exclusive: Makes this queue exclusive. Exclusive queues may only be \
+    #     accessed by the current connection, and are deleted when that connection \
+    #     closes. Passive declaration of an exclusive queue by other connections are not allowed.
+    #     :param passive: Only check to see if the queue exists.
+    #     :param auto_delete: Delete queue when channel will be closed.
+    #     :param arguments: pika additional arguments
+    #     :param timeout: execution timeout
+    #     :return: :class:`aio_pika.queue.Queue` instance
+    #     """
+    #
+    #     with (yield from self._write_lock):
+    #         if auto_delete and durable is None:
+    #             durable = False
+    #
+    #         queue = self.QUEUE_CLASS(
+    #             self.loop, self._futures.get_child(), self._channel, name,
+    #             durable, exclusive, auto_delete, arguments
+    #         )
+    #
+    #         yield from queue.declare(timeout, passive=passive)
+    #         return queue
 
+    @gen.coroutine
+    def close(self):
+        if not self._channel:
+            return
+
+        with (yield self._write_lock.acquire()):
+            self._channel.close()
+            yield self.closing
+            self._channel = None
+
+    @BaseChannel._ensure_channel_is_open
+    @gen.coroutine
+    def set_qos(self, prefetch_count=0, prefetch_size=0, all_channels=False, timeout=None):
         """
-        with self._pending_future() as \
-                declare_ok_result:
-            self._impl.queue_declare(
-                queue=queue,
-                passive=passive,
-                durable=durable,
-                exclusive=exclusive,
-                auto_delete=auto_delete,
-                arguments=arguments,
-                callback=declare_ok_result.set_result)
-
-            yield declare_ok_result
-            raise Return(declare_ok_result.result())
-
-    @coroutine
-    def queue_delete(self, queue, if_unused=False, if_empty=False):
-        """Delete a queue from the broker.
-
-        :param queue: The queue to delete
-        :type queue: str or unicode
-        :param bool if_unused: only delete if it's unused
-        :param bool if_empty: only delete if the queue is empty
-
-        :returns: Method frame from the Queue.Delete-ok response
-        :rtype: `pika.frame.Method` having `method` attribute of type
-          `spec.Queue.DeleteOk`
-
+        :type prefetch_count: int
+        :type prefetch_size: int
+        :type all_channels: bool
+        :type timeout: int
         """
-        with self._pending_future() as \
-                delete_ok_result:
-            self._impl.queue_delete(queue=queue,
-                                    if_unused=if_unused,
-                                    if_empty=if_empty,
-                                    callback=delete_ok_result.set_result)
 
-            yield delete_ok_result
-            raise Return(delete_ok_result.result())
+        with (yield self._write_lock.acquire()):
+            f = self._create_future(timeout=timeout)
 
-    @coroutine
-    def queue_purge(self, queue):
-        """Purge all of the messages from the specified queue
+            self._channel.basic_qos(
+                f.set_result,
+                prefetch_count=prefetch_count,
+                prefetch_size=prefetch_size,
+                all_channels=all_channels
+            )
 
-        :param queue: The queue to purge
-        :type  queue: str or unicode
+            raise gen.Return((yield f))
 
-        :returns: Method frame from the Queue.Purge-ok response
-        :rtype: `pika.frame.Method` having `method` attribute of type
-          `spec.Queue.PurgeOk`
+    # @BaseChannel._ensure_channel_is_open
+    # @asyncio.coroutine
+    # def queue_delete(self, queue_name: str, timeout: int=None,
+    #                  if_unused: bool=False, if_empty: bool=False, nowait: bool=False):
+    #
+    #     with (yield from self._write_lock):
+    #         f = self._create_future(timeout=timeout)
+    #
+    #         self._channel.queue_delete(
+    #             callback=f.set_result,
+    #             queue=queue_name,
+    #             if_unused=if_unused,
+    #             if_empty=if_empty,
+    #             nowait=nowait
+    #         )
+    #
+    #         return (yield from f)
 
+    @BaseChannel._ensure_channel_is_open
+    @gen.coroutine
+    def exchange_delete(self, exchange_name, timeout=None, if_unused=False):
         """
-        with self._pending_future() as \
-                purge_ok_result:
-            self._impl.queue_purge(queue=queue,
-                                   callback=purge_ok_result.set_result)
-            yield purge_ok_result
-            raise Return(purge_ok_result.result())
-
-    @coroutine
-    def queue_bind(self, queue, exchange, routing_key=None,
-                   arguments=None):
-        """Bind the queue to the specified exchange
-
-        :param queue: The queue to bind to the exchange
-        :type queue: str or unicode
-        :param exchange: The source exchange to bind to
-        :type exchange: str or unicode
-        :param routing_key: The routing key to bind on
-        :type routing_key: str or unicode
-        :param dict arguments: Custom key/value pair arguments for the binding
-
-        :returns: Method frame from the Queue.Bind-ok response
-        :rtype: `pika.frame.Method` having `method` attribute of type
-          `spec.Queue.BindOk`
-
+        :type exchange_name: str
+        :type timeout: int
+        :type if_unused:bool
+        :type nowait: bool
         """
-        with self._pending_future() as \
-                bind_ok_result:
-            self._impl.queue_bind(queue=queue,
-                                  exchange=exchange,
-                                  routing_key=routing_key,
-                                  arguments=arguments,
-                                  callback=bind_ok_result.set_result)
-            yield bind_ok_result
-            raise Return(bind_ok_result.result())
+        with (yield self._write_lock.acquire()):
+            f = self._create_future(timeout=timeout)
 
-    @coroutine
-    def queue_unbind(self, queue, exchange=None, routing_key=None,
-                     arguments=None):
-        """Unbind a queue from an exchange.
+            self._channel.exchange_delete(
+                exchange=exchange_name, if_unused=if_unused, callback=f.set_result
+            )
 
-        :param queue: The queue to unbind from the exchange
-        :type queue: str or unicode
-        :param exchange: The source exchange to bind from
-        :type exchange: str or unicode
-        :param routing_key: The routing key to unbind
-        :type routing_key: str or unicode
-        :param dict arguments: Custom key/value pair arguments for the binding
+            raise gen.Return((yield f))
 
-        :returns: Method frame from the Queue.Unbind-ok response
-        :rtype: `pika.frame.Method` having `method` attribute of type
-          `spec.Queue.UnbindOk`
+    # def transaction(self) -> Transaction:
+    #     if self._publisher_confirms:
+    #         raise RuntimeError("Cannot create transaction when publisher "
+    #                            "confirms are enabled")
+    #
+    #     tx = Transaction(self._channel, self._futures.get_child())
+    #
+    #     self.add_close_callback(tx.on_close_callback)
+    #
+    #     tx.closing.add_done_callback(
+    #         lambda _: self.remove_close_callback(tx.on_close_callback)
+    #     )
+    #
+    #     return tx
 
-        """
-        with self._pending_future() as \
-                unbind_ok_result:
-            self._impl.queue_unbind(queue=queue,
-                                    exchange=exchange,
-                                    routing_key=routing_key,
-                                    arguments=arguments,
-                                    callback=unbind_ok_result.set_result)
-            yield unbind_ok_result
-            raise Return(unbind_ok_result.result())
+    def __del__(self):
+        with tools.suppress(Exception):
+            self.loop.create_task(self.close())
 
-    @coroutine
-    def tx_select(self):
-        """Select standard transaction mode. This method sets the channel to use
-        standard transactions. The client must use this method at least once on
-        a channel before using the Commit or Rollback methods.
 
-        :returns: Method frame from the Tx.Select-ok response
-        :rtype: `pika.frame.Method` having `method` attribute of type
-          `spec.Tx.SelectOk`
-
-        """
-        with self._pending_future() as \
-                select_ok_result:
-            self._impl.tx_select(select_ok_result.set_result)
-
-            yield select_ok_result
-            raise Return(select_ok_result.result())
-
-    @coroutine
-    def tx_commit(self):
-        """Commit a transaction.
-
-        :returns: Method frame from the Tx.Commit-ok response
-        :rtype: `pika.frame.Method` having `method` attribute of type
-          `spec.Tx.CommitOk`
-
-        """
-        with self._pending_future() as \
-                commit_ok_result:
-            self._impl.tx_commit(commit_ok_result.set_result)
-
-            yield commit_ok_result
-            raise Return(commit_ok_result.result())
-
-    @coroutine
-    def tx_rollback(self):
-        """Rollback a transaction.
-
-        :returns: Method frame from the Tx.Commit-ok response
-        :rtype: `pika.frame.Method` having `method` attribute of type
-          `spec.Tx.CommitOk`
-
-        """
-        with self._pending_future() as \
-                rollback_ok_result:
-            self._impl.tx_rollback(rollback_ok_result.set_result)
-
-            yield rollback_ok_result
-            raise Return(rollback_ok_result.result())
-
-    def _on_message_ack_nack(self, frame):
-        if frame.method.multiple:
-            num_confirmed = frame.method.delivery_tag - self._delivery_info[0].tag + 1
-        else:
-            assert frame.method.delivery_tag == self._delivery_info[0].tag
-            num_confirmed = 1
-        for _ in range(num_confirmed):
-            self._delivery_info.popleft().future.set_result(frame.method.NAME)
-
-    def _raise_if_not_open(self):
-        if not self.is_open:
-            raise pika.exceptions.ChannelClosed()
-
-    @contextlib.contextmanager
-    def _pending_future(self):
-        with self._future_store.pending_future() as future:
-            yield future
-
-    @contextlib.contextmanager
-    def _pending_reply(self, reply):
-        with self._pending_future() as future:
-            self._impl.add_callback(future.set_result, replies=(reply,), one_shot=True)
-            yield future
+__all__ = ('Channel',)

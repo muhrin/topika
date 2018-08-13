@@ -1,8 +1,3 @@
-from future.standard_library import install_aliases
-
-# Enable urlparse.parse in python2/3
-install_aliases()
-
 import logging
 from functools import wraps, partial
 import pika
@@ -177,31 +172,58 @@ class Connection(object):
             raise gen.Return(result)
 
     @gen.coroutine
-    def channel(self, channel_number=None):
-        """Create a new channel with the next available channel number or pass
-        in a channel number to use. Must be non-zero if you would like to
-        specify but it is recommended that you let Pika manage the channel
-        numbers.
+    def channel(self, channel_number=None, publisher_confirms=True,
+                on_return_raises=False):
+        """ Coroutine which returns new instance of :class:`Channel`.
 
-        :rtype: :class:`Channel`
+        Example:
+
+        .. code-block:: python
+
+            import aio_pika
+
+            async def main(loop):
+                connection = await aio_pika.connect(
+                    "amqp://guest:guest@127.0.0.1/"
+                )
+
+                channel1 = connection.channel()
+                await channel1.close()
+
+                # Creates channel with specific channel number
+                channel42 = connection.channel(42)
+                await channel42.close()
+
+                # For working with transactions
+                channel_no_confirms = connection.channel(publisher_confirms=True)
+                await channel_no_confirms.close()
+
+        :param channel_number: specify the channel number explicit
+        :type channel_number: int
+        :param publisher_confirms:
+            if `True` the :func:`aio_pika.Exchange.publish` method will be return
+            :class:`bool` after publish is complete. Otherwise the
+            :func:`aio_pika.Exchange.publish` method will be return :class:`None`
+        :type publisher_confirms: bool
+        :param on_return_raises:
+            raise an :class:`aio_pika.exceptions.UnroutableError`
+            when mandatory message will be returned
+        :rtype: :class:`Generator[Any, None, Channel]`
         """
-        self.ensure_connected()
+        with (yield self.__write_lock.acquire()):
+            LOGGER.debug("Creating AMQP channel for conneciton: %r", self)
 
-        with self.future_store.pending_future() as open_future:
-            impl_channel = self._connection.channel(
-                channel_number=channel_number,
-                on_open_callback=open_future.set_result)
+            channel = self.CHANNEL_CLASS(self, self.loop, self.future_store,
+                                         channel_number=channel_number,
+                                         publisher_confirms=publisher_confirms,
+                                         on_return_raises=on_return_raises)
+            yield channel.initialize()
 
-            # Wait until the channel is opened
-            yield open_future
+            LOGGER.debug("Channel created: %r", channel)
 
-        # Create our proxy channel
-        channel = self.CHANNEL_CLASS(impl_channel, self, self.future_store.create_child())
+            self._channels[channel.number] = channel
 
-        # Link implementation channel with our proxy channel
-        impl_channel._set_cookie(channel)
-
-        raise Return(channel)
+            raise gen.Return(channel)
 
     #
     # Connections state properties
