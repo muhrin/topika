@@ -13,7 +13,7 @@ from pika.channel import Channel
 from contextlib import contextmanager
 from .exceptions import MessageProcessError
 
-log = getLogger(__name__)
+LOGGER = getLogger(__name__)
 NoneType = type(None)
 
 
@@ -353,7 +353,7 @@ class IncomingMessage(Message):
         except:
             if not ignore_processed or not self.processed:
                 if reject_on_redelivered and self.redelivered:
-                    log.info("Message %r was redelivered and will be rejected", self)
+                    LOGGER.info("Message %r was redelivered and will be rejected", self)
                     self.reject(requeue=False)
                 else:
                     self.reject(requeue=requeue)

@@ -77,14 +77,3 @@ def ensure_connection_exception(exception_or_message):
         # We got a string message
         return pika.exceptions.AMQPConnectionError(exception_or_message)
 
-
-try:
-    from contextlib import suppress
-except ImportError:
-    @contextlib.contextmanager
-    def suppress(*exceptions):
-        excs = exceptions or Exception
-        try:
-            yield
-        except excs:
-            pass

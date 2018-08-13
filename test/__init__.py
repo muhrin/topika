@@ -9,8 +9,7 @@ import os
 import shortuuid
 from tornado import gen
 from tornado.testing import gen_test, AsyncTestCase
-from urllib.parse import urlparse
-
+from furl import furl
 from topika import Connection, connect, Channel, Exchange
 
 testfile = os.path.join(tempfile.gettempdir(), 'topkia_unittest.log')
@@ -22,7 +21,7 @@ print("Logging test to '{}'".format(testfile))
 FORMAT = "[%(filename)s:%(lineno)s - %(funcName)s()] %(message)s"
 logging.basicConfig(filename=testfile, level=logging.INFO, format=FORMAT)
 
-AMQP_URL = os.getenv("AMQP_URL", "amqp://guest:guest@127.0.0.1")
+AMQP_URL = furl(os.getenv("AMQP_URL", "amqp://guest:guest@127.0.0.1"))
 
 
 # Was here from aio-pika
@@ -70,20 +69,19 @@ class BaseTestCase(AsyncTestCase):
 
         raise gen.Return(channel)
 
-    #
-    # @gen.coroutine
-    # def declare_queue(self, *args, **kwargs):
-    #     """
-    #     :rtype: Generator[Any, None, Queue]
-    #     """
-    #     if 'channel' not in kwargs:
-    #         channel = yield self.create_channel()
-    #     else:
-    #         channel = kwargs.pop('channel')
-    #
-    #     queue = yield channel.declare_queue(*args, **kwargs)
-    #     self.addCleanup(queue.delete)
-    #     raise gen.Return(queue)
+    @gen.coroutine
+    def declare_queue(self, *args, **kwargs):
+        """
+        :rtype: Generator[Any, None, Queue]
+        """
+        if 'channel' not in kwargs:
+            channel = yield self.create_channel()
+        else:
+            channel = kwargs.pop('channel')
+
+        queue = yield channel.declare_queue(*args, **kwargs)
+        self.addCleanup(queue.delete)
+        raise gen.Return(queue)
 
     @gen.coroutine
     def declare_exchange(self, *args, **kwargs):

@@ -13,6 +13,7 @@ from urllib.parse import urlparse
 
 from .channel import Channel
 from . import common
+from . import compat
 from . import exceptions
 from . import tools
 
@@ -22,6 +23,8 @@ LOGGER = logging.getLogger(__name__)
 
 
 class Connection(object):
+    """ Connection abstraction """
+
     __slots__ = (
         'loop', '__closing', '_connection', 'future_store', '__sender_lock',
         '_io_loop', '__connection_parameters', '__credentials',
@@ -48,6 +51,7 @@ class Connection(object):
             port=port,
             credentials=self.__credentials,
             virtual_host=virtual_host,
+            **kwargs
         )
 
         self._channels = dict()
@@ -68,68 +72,85 @@ class Connection(object):
         cls_name = self.__class__.__name__
         return '<{0}: "{1}">'.format(cls_name, str(self))
 
-    # TODO: Look into this for python 3.5+
-    # @gen.coroutine
-    # def __enter__(self):
-    #     yield self.ensure_connected()
-    #     raise Return(self)
-    #
-    # @gen.coroutine
-    # def __exit__(self, exc_type, exc_val, exc_tb):
-    #     yield self.close()
-    #     raise Return(False)  # Don't supress any exceptions
+    def add_close_callback(self, callback):
+        """ Add callback which will be called after connection will be closed.
 
-    def add_backpressure_callback(self, callback):
-        return self._connection.add_backpressure_callback(common._CallbackWrapper(self, callback))
+        :class:`tornado.concurrent..Future` will be passed as a first argument.
 
-    def add_on_open_callback(self, callback):
-        return self._connection.add_on_open_callback(common._CallbackWrapper(self, callback))
+        Example:
 
-    def add_on_close_callback(self, callback):
-        return self._connection.add_on_close_callback(common._CallbackWrapper(self, callback))
+        .. code-block:: python
 
-    def add_on_connection_blocked_callback(self, callback):
-        self._connection.add_on_connection_blocked_callback(common._CallbackWrapper(self, callback))
+            import topika
+            from tornado import gen
 
-    def add_on_connection_unblocked_callback(self, callback):
-        self._connection.add_on_connection_unblocked_callback(common._CallbackWrapper(self, callback))
+            @gen.coroutine
+            def main():
+                connection = yield topika.connect(
+                    "amqp://guest:guest@127.0.0.1/"
+                )
+                connection.add_close_callback(print)
+                yield connection.close()
+                # <Future finished result='Normal shutdown'>
 
-    def add_callback_threadsafe(self, callback):
-        """Requests a call to the given function as soon as possible in the
-        context of this connection's thread.
 
-        NOTE: This is the only thread-safe method in `BlockingConnection`. All
-         other manipulations of `BlockingConnection` must be performed from the
-         connection's thread.
+        :type callback: Callable[[], None]
+        :return: None
+        """
+        self._closing.add_done_callback(callback)
 
-        For example, a thread may request a call to the
-        `BlockingChannel.basic_ack` method of a `BlockingConnection` that is
-        running in a different thread via
+    @property
+    def is_closed(self):
+        """ Is this connection closed """
 
-        ```
-        connection.add_callback_threadsafe(
-            functools.partial(channel.basic_ack, delivery_tag=...))
-        ```
+        if not self._connection:
+            return True
 
-        :param method callback: The callback method; must be callable
+        if self._closing.done():
+            return True
+
+        return False
+
+    @property
+    def _closing(self):
+        self._ensure_cosing_future()
+        return self.__closing
+
+    def _ensure_cosing_future(self, force=False):
+        if self.__closing is None or force:
+            self.__closing = self.future_store.create_future()
+
+    @property
+    @gen.coroutine
+    def closing(self):
+        """ Return coroutine which will be finished after connection close.
+
+        Example:
+
+        .. code-block:: python
+
+            import topika
+            import tornado.gen
+
+            @tornado.gen.coroutine
+            def async_close(connection):
+                yield tornado.gen.sleep(2)
+                yield connection.close()
+
+            @tornado.gen.coroutine
+            def main(loop):
+                connection = await aio_pika.connect(
+                    "amqp://guest:guest@127.0.0.1/"
+                )
+                topika.create_task(async_close(connection))
+
+                yield connection.closing
 
         """
-        self._connection.add_callback_threadsafe(callback)
-
-    def close(self):
-        """ Close AMQP connection """
-        LOGGER.debug("Closing AMQP connection")
-
-        @gen.coroutine
-        def inner():
-            if self._connection:
-                self._connection.close()
-            yield self.closing
-
-        return tools.create_task(inner())
+        raise gen.Return((yield self._closing))
 
     def __del__(self):
-        with tools.suppress():
+        with compat.suppress():
             if not self.is_closed:
                 self.close()
 
@@ -225,30 +246,21 @@ class Connection(object):
 
             raise gen.Return(channel)
 
+    def close(self):
+        """ Close AMQP connection """
+        LOGGER.debug("Closing AMQP connection")
+
+        @gen.coroutine
+        def inner():
+            if self._connection:
+                self._connection.close()
+            yield self.closing
+
+        return tools.create_task(inner())
+
     #
     # Connections state properties
     #
-
-    @property
-    def is_closed(self):
-        """ Is this connection closed """
-
-        if not self._connection:
-            return True
-
-        if self._closing.done():
-            return True
-
-        return False
-
-    @property
-    def _closing(self):
-        self._ensure_cosing_future()
-        return self.__closing
-
-    def _ensure_cosing_future(self, force=False):
-        if self.__closing is None or force:
-            self.__closing = self.future_store.create_future()
 
     @property
     def is_open(self):
@@ -256,35 +268,6 @@ class Connection(object):
         Returns a boolean reporting the current connection state.
         """
         return self._connection.is_open
-
-    @property
-    @gen.coroutine
-    def closing(self):
-        """ Return coroutine which will be finished after connection close.
-
-        Example:
-
-        .. code-block:: python
-
-            import topika
-            import tornado.gen
-
-            @tornado.gen.coroutine
-            def async_close(connection):
-                yield tornado.gen.sleep(2)
-                yield connection.close()
-
-            @tornado.gen.coroutine
-            def main(loop):
-                connection = await aio_pika.connect(
-                    "amqp://guest:guest@127.0.0.1/"
-                )
-                topika.create_task(async_close(connection))
-
-                yield connection.closing
-
-        """
-        raise gen.Return((yield self._closing))
 
     def _channel_cleanup(self, channel):
         """

@@ -22,7 +22,6 @@ except ImportError:
     class Awaitable(Generic[T_co], _Awaitable):
         __slots__ = ()
 
-
 try:
     from contextlib import suppress
 except ImportError:
@@ -38,12 +37,26 @@ except ImportError:
         except exc:
             pass
 
-
 try:
     ConnectionError
+    ConnectionRefusedError
 except NameError:
     class ConnectionError(Exception):
         pass
 
+
     class ConnectionRefusedError(ConnectionError):
         pass
+
+try:
+    from contextlib import suppress
+except ImportError:
+    @contextlib.contextmanager
+    def suppress(*exceptions):
+        excs = exceptions or Exception
+        try:
+            yield
+        except excs:
+            pass
+
+__all__ = ('ConnectionError', 'ConnectionRefusedError')

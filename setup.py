@@ -51,12 +51,14 @@ setup(
         'pika-dev>=1.0.0b1.dev1, <2.0',
         'pyyaml>=3.0, <4.0',
         'shortuuid',
+        'furl'
     ],
     extras_require={
         'dev': ['pytest', 'pytest-cov', 'ipython', 'twine'],
         ':python_version<"3.5"': ['typing'],
         ':python_version<"3.4"': ['enum34', 'singledispatch'],
-        ':python_version<"3.2"': ['backports.tempfile']
+        ':python_version<"3.3"': ['mock'],
+        ':python_version<"3.2"': ['backports.tempfile'],
     },
     packages=['topika'],
     test_suite='test'

@@ -6,14 +6,14 @@ from tornado import gen, locks
 from typing import Callable, Any, Generator, Union
 
 from .common import BaseChannel
+from . import compat
 from .compat import Awaitable
 from . import common
 from . import exceptions
 from . import exchange
 from . import message
+from . import queue
 from . import tools
-
-# from . import queue
 
 LOGGER = logging.getLogger(__name__)
 
@@ -23,7 +23,7 @@ FunctionOrCoroutine = Union[Callable[[message.IncomingMessage], Any], Awaitable[
 class Channel(BaseChannel):
     """ Channel abstraction """
 
-    # QUEUE_CLASS = Queue
+    QUEUE_CLASS = queue.Queue
     EXCHANGE_CLASS = exchange.Exchange
 
     __slots__ = ('_connection', '__closing', '_confirmations', '_delivery_tag',
@@ -90,19 +90,6 @@ class Channel(BaseChannel):
     def __repr__(self):
         return '<%s "%s#%s">' % (self.__class__.__name__, self._connection, self)
 
-    # These can only potentially work on python 3.5+ with async_generator
-    # @gen.coroutine
-    # def __enter__(self):
-    #     raise gen.Return(self)
-    #
-    # @gen.coroutine
-    # def __exit__(self, exc_type, exc_val, exc_tb):
-    #     try:
-    #         yield self.close()
-    #     except (pika.exceptions.ConnectionClosed, pika.exceptions.ChannelClosed):
-    #         pass
-    #     raise gen.Return(False)
-
     def _on_channel_close(self, channel, reason):
         """
         :type channel: :class:`pika.channel.Channel`
@@ -112,7 +99,7 @@ class Channel(BaseChannel):
         # In case of normal closing, closing code should be unaltered (0 by default)
         # See: https://github.com/pika/pika/blob/8d970e1/pika/channel.py#L84
 
-        if reason.reply_code == 0:
+        if isinstance(reason, pika.exceptions.ChannelClosed) and reason.reply_code == 0:
             self._closing.set_result(None)
             log_method = LOGGER.debug
         else:
@@ -139,7 +126,7 @@ class Channel(BaseChannel):
         msg = message.ReturnedMessage(channel=channel, body=body, envelope=method, properties=properties)
 
         for callback in self._on_return_callbacks:
-            self.loop.create_task(callback(msg))
+            tools.create_task(callback(msg), loop=self.loop)
 
     def add_close_callback(self, callback):
         """
@@ -286,36 +273,43 @@ class Channel(BaseChannel):
 
             raise gen.Return((yield f))
 
-    # @BaseChannel._ensure_channel_is_open
-    # @gen.coroutine
-    # def declare_queue(self, name: str=None, *, durable: bool=None, exclusive: bool=False, passive: bool=False,
-    #                   auto_delete: bool=False, arguments: dict=None, timeout: int=None
-    #                   ) -> Generator[Any, None, Queue]:
-    #     """
-    #
-    #     :param name: queue name
-    #     :param durable: Durability (queue survive broker restart)
-    #     :param exclusive: Makes this queue exclusive. Exclusive queues may only be \
-    #     accessed by the current connection, and are deleted when that connection \
-    #     closes. Passive declaration of an exclusive queue by other connections are not allowed.
-    #     :param passive: Only check to see if the queue exists.
-    #     :param auto_delete: Delete queue when channel will be closed.
-    #     :param arguments: pika additional arguments
-    #     :param timeout: execution timeout
-    #     :return: :class:`aio_pika.queue.Queue` instance
-    #     """
-    #
-    #     with (yield from self._write_lock):
-    #         if auto_delete and durable is None:
-    #             durable = False
-    #
-    #         queue = self.QUEUE_CLASS(
-    #             self.loop, self._futures.get_child(), self._channel, name,
-    #             durable, exclusive, auto_delete, arguments
-    #         )
-    #
-    #         yield from queue.declare(timeout, passive=passive)
-    #         return queue
+    @BaseChannel._ensure_channel_is_open
+    @gen.coroutine
+    def declare_queue(self, name=None, durable=None, exclusive=False, passive=False,
+                      auto_delete=False, arguments=None, timeout=None
+                      ):
+        """
+
+        :param name: queue name
+        :type name: str
+        :param durable: Durability (queue survive broker restart)
+        :type durable: bool
+        :param exclusive: Makes this queue exclusive. Exclusive queues may only be \
+        accessed by the current connection, and are deleted when that connection \
+        closes. Passive declaration of an exclusive queue by other connections are not allowed.
+        :type exclusive: bool
+        :param passive: Only check to see if the queue exists.
+        :type passive: bool
+        :param auto_delete: Delete queue when channel will be closed.
+        :type auto_delete: bool
+        :param arguments: pika additional arguments
+        :type arguments: Optional[dict]
+        :param timeout: execution timeout
+        :type timeout: int
+        :rtype: :class:`Generator[Any, None, Queue]`
+        """
+
+        with (yield self._write_lock.acquire()):
+            if auto_delete and durable is None:
+                durable = False
+
+            queue = self.QUEUE_CLASS(
+                self.loop, self._futures.create_child(), self._channel, name,
+                durable, exclusive, auto_delete, arguments
+            )
+
+            yield queue.declare(timeout, passive=passive)
+            raise gen.Return(queue)
 
     @gen.coroutine
     def close(self):
@@ -341,31 +335,35 @@ class Channel(BaseChannel):
             f = self._create_future(timeout=timeout)
 
             self._channel.basic_qos(
-                f.set_result,
-                prefetch_count=prefetch_count,
                 prefetch_size=prefetch_size,
-                all_channels=all_channels
+                prefetch_count=prefetch_count,
+                all_channels=all_channels,
+                callback=f.set_result,
             )
 
             raise gen.Return((yield f))
 
-    # @BaseChannel._ensure_channel_is_open
-    # @asyncio.coroutine
-    # def queue_delete(self, queue_name: str, timeout: int=None,
-    #                  if_unused: bool=False, if_empty: bool=False, nowait: bool=False):
-    #
-    #     with (yield from self._write_lock):
-    #         f = self._create_future(timeout=timeout)
-    #
-    #         self._channel.queue_delete(
-    #             callback=f.set_result,
-    #             queue=queue_name,
-    #             if_unused=if_unused,
-    #             if_empty=if_empty,
-    #             nowait=nowait
-    #         )
-    #
-    #         return (yield from f)
+    @BaseChannel._ensure_channel_is_open
+    @gen.coroutine
+    def queue_delete(self, queue_name, timeout=None,
+                     if_unused=False, if_empty=False):
+        """
+        :type queue_name: str
+        :type timeout: int
+        :type if_unused: bool
+        :type if_empty: bool
+        """
+        with (yield self._write_lock.acquire()):
+            f = self._create_future(timeout=timeout)
+
+            self._channel.queue_delete(
+                callback=f.set_result,
+                queue=queue_name,
+                if_unused=if_unused,
+                if_empty=if_empty,
+            )
+
+            raise gen.Return((yield f))
 
     @BaseChannel._ensure_channel_is_open
     @gen.coroutine
@@ -374,7 +372,6 @@ class Channel(BaseChannel):
         :type exchange_name: str
         :type timeout: int
         :type if_unused:bool
-        :type nowait: bool
         """
         with (yield self._write_lock.acquire()):
             f = self._create_future(timeout=timeout)
@@ -401,7 +398,7 @@ class Channel(BaseChannel):
     #     return tx
 
     def __del__(self):
-        with tools.suppress(Exception):
+        with compat.suppress(Exception):
             self.loop.create_task(self.close())
 
 

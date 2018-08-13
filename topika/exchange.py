@@ -10,7 +10,6 @@ from .tools import create_future
 
 log = getLogger(__name__)
 
-
 ExchangeType_ = Union['Exchange', str]
 
 
@@ -130,7 +129,7 @@ class Exchange(BaseChannel):
             await queue.bind(dest_exchange, routing_key)
             await dest_exchange.bind(src_exchange, routing_key)
 
-        :param exchange: :class:`aio_pika.exchange.Exchange` instance
+        :param exchange: :class:`topika.exchange.Exchange` instance
         :type exchange: ExchangeType_
         :param routing_key: routing key
         :type routing_key: str
@@ -148,17 +147,17 @@ class Exchange(BaseChannel):
         f = self._create_future(timeout)
 
         self._channel.exchange_bind(
-            f.set_result,
-            self.name,
-            self._get_exchange_name(exchange),
+            destination=self.name,
+            source=self._get_exchange_name(exchange),
             routing_key=routing_key,
-            arguments=arguments
+            arguments=arguments,
+            callback=f.set_result,
         )
 
         return f
 
     @BaseChannel._ensure_channel_is_open
-    def unbind(self, exchange, routing_key = '',
+    def unbind(self, exchange, routing_key='',
                arguments=None, timeout=None):
 
         """ Remove exchange-to-exchange binding for this :class:`Exchange` instance
@@ -194,7 +193,7 @@ class Exchange(BaseChannel):
     @BaseChannel._ensure_channel_is_open
     @gen.coroutine
     def publish(self, message, routing_key, mandatory=True, immediate=False):
-        """ Publish the message to the queue. `aio_pika` use `publisher confirms`_
+        """ Publish the message to the queue. `topika` use `publisher confirms`_
         extension for message delivery.
 
         .. _publisher confirms: https://www.rabbitmq.com/confirms.html
@@ -228,7 +227,11 @@ class Exchange(BaseChannel):
         log.info("Deleting %r", self)
         self._futures.reject_all(RuntimeError("Exchange was deleted"))
         future = create_future(loop=self.loop)
-        self._channel.exchange_delete(future.set_result, self.name, if_unused=if_unused)
+        self._channel.exchange_delete(
+            exchange=self.name,
+            if_unused=if_unused,
+            callback=future.set_result
+        )
         return future
 
 
