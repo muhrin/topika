@@ -854,6 +854,7 @@ class TestCase(BaseTestCase):
 
     @testing.gen_test
     def test_connection_close(self):
+        """ Try setting an invalid delivery mode on a message """
         client = yield self.create_connection()
 
         routing_key = self.get_random_name()
@@ -862,7 +863,7 @@ class TestCase(BaseTestCase):
         exchange = yield channel.declare_exchange('direct', auto_delete=True)
 
         try:
-            with self.assertRaises(topika.exceptions.ChannelClosed):
+            with self.assertRaises(pika.exceptions.ChannelClosedByBroker):
                 msg = Message(bytes(shortuuid.uuid(), 'utf-8'))
                 msg.delivery_mode = 8
 

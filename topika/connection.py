@@ -28,15 +28,12 @@ class Connection(object):
     __slots__ = (
         'loop', '__closing', '_connection', 'future_store', '__sender_lock',
         '_io_loop', '__connection_parameters', '__credentials',
-        '__write_lock', '_channels',
+        '__write_lock', '_channels', '__close_started'
     )
 
     CHANNEL_CLASS = Channel
 
-    # Default for future that will be used when user initiates connection close
-    _close_future = None
-
-    def __init__(self, url=None, host='localhost',
+    def __init__(self, host='localhost',
                  port=5672, login='guest',
                  password='guest', virtual_host='/',
                  loop=None, **kwargs):
@@ -57,6 +54,7 @@ class Connection(object):
         self._channels = dict()
         self._connection = None
         self.__closing = None
+        self.__close_started = False
         self.__write_lock = locks.Lock()
 
     def __str__(self):
@@ -247,8 +245,15 @@ class Connection(object):
             raise gen.Return(channel)
 
     def close(self):
-        """ Close AMQP connection """
+        """
+        Close AMQP connection
+
+        This method is idempotent and may be called multiple times without conflict
+        """
         LOGGER.debug("Closing AMQP connection")
+
+        if self.__close_started:
+            return self.__closing
 
         @gen.coroutine
         def inner():
@@ -256,6 +261,7 @@ class Connection(object):
                 self._connection.close()
             yield self.closing
 
+        self.__close_started = True
         return tools.create_task(inner())
 
     #
@@ -362,16 +368,6 @@ class Connection(object):
     def ensure_connected(self):
         if self.is_closed:
             raise RuntimeError("Connection closed")
-
-    def _on_close(self, connection, reply_code, reply_text):
-        LOGGER.info('Connection closed: (%s) %s', reply_code, reply_text)
-
-        if self._close_future:
-            # The user has requested a close
-            self._close_future.set_result((reply_code, reply_text))
-
-        # Set exceptions on all outstanding operations
-        self.future_store.reject_all(pika.exceptions.ConnectionClosed(reply_code, reply_text))
 
 
 @gen.coroutine

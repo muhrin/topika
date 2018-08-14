@@ -3,6 +3,7 @@ from future.standard_library import install_aliases
 # Enable urlparse.parse in python2/3
 install_aliases()
 
+import functools
 import logging
 import tempfile
 import os
@@ -11,6 +12,9 @@ from tornado import gen
 from tornado.testing import gen_test, AsyncTestCase
 from furl import furl
 from topika import Connection, connect, Channel, Exchange
+
+for logger_name in ('pika.channel', 'pika.callback', 'pika.connection'):
+    logging.getLogger(logger_name).setLevel(logging.INFO)
 
 testfile = os.path.join(tempfile.gettempdir(), 'topkia_unittest.log')
 try:
@@ -28,6 +32,28 @@ class BaseTestCase(AsyncTestCase):
     def setUp(self):
         super(BaseTestCase, self).setUp()
         self.loop = self.io_loop
+        self._async_cleanups = []
+
+    def tearDown(self):
+        while self._async_cleanups:
+            function, args, kwargs = self._async_cleanups.pop(-1)
+            # try:
+            self.loop.run_sync(functools.partial(function, *args, **kwargs))
+            # except Exception as e:
+                # print(e)
+
+        super(BaseTestCase, self).tearDown()
+
+    def addCleanup(self, function, *args, **kwargs):
+        """
+        Add a function, with arguments, to be called when the test is
+        completed. If function is a coroutine function, it will run on the loop
+        before it's cleaned.
+        """
+        if gen.is_coroutine_function(function):
+            return self._async_cleanups.append((function, args, kwargs))
+
+        return super(BaseTestCase, self).addCleanup(function, *args, **kwargs)
 
     def get_random_name(self, *args):
         prefix = ['test']
@@ -45,7 +71,10 @@ class BaseTestCase(AsyncTestCase):
         client = yield connect(AMQP_URL, loop=self.loop)
 
         if cleanup:
-            self.addCleanup(client.close)
+            @gen.coroutine
+            def close():
+                yield client.close()
+            self.addCleanup(close)
 
         raise gen.Return(client)
 

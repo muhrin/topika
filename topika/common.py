@@ -166,7 +166,7 @@ class BaseChannel(object):
         @tools.coroutine
         def wrap(self, *args, **kwargs):
             if self.is_closed:
-                raise exceptions.ChannelClosed
+                raise RuntimeError("The channel is closed")
 
             raise gen.Return((yield func(self, *args, **kwargs)))
 

@@ -38,9 +38,11 @@ except ImportError:
             pass
 
 try:
-    ConnectionError
-    ConnectionRefusedError
+    # Either take the native ones
+    ConnectionError = ConnectionError
+    ConnectionRefusedError = ConnectionRefusedError
 except NameError:
+    # Or define these ourselves (python2)
     class ConnectionError(Exception):
         pass
 

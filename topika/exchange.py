@@ -178,11 +178,11 @@ class Exchange(BaseChannel):
         f = self._create_future(timeout)
 
         self._channel.exchange_unbind(
-            f.set_result,
-            self.name,
-            self._get_exchange_name(exchange),
+            destination=self.name,
+            source=self._get_exchange_name(exchange),
             routing_key=routing_key,
-            arguments=arguments
+            arguments=arguments,
+            callback=f.set_result,
         )
 
         return f
