@@ -11,7 +11,7 @@ class TestCase(AMQPTestCase):
         client = yield connect_robust(AMQP_URL, loop=self.loop)
 
         if cleanup:
-            self.addCleanup(client.close)
+            self.addCleanup(self.wait_for, client.close)
 
         raise gen.Return(client)
 

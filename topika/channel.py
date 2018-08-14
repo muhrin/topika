@@ -97,11 +97,9 @@ class Channel(BaseChannel):
         :type reason: Exception
         :return:
         """
-        # In case of normal closing, closing code should be unaltered (0 by default)
-        # See: https://github.com/pika/pika/blob/8d970e1/pika/channel.py#L84
-
-        if isinstance(reason, pika.exceptions.ChannelClosed) and reason.reply_code == 0:
-            self._closing.set_result(None)
+        # Check if we initiated the channel close
+        if isinstance(reason, pika.exceptions.ChannelClosedByClient):
+            self._closing.set_result(reason.reply_code)
             log_method = LOGGER.debug
         else:
             self._closing.set_exception(reason)
