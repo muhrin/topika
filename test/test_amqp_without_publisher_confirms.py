@@ -1,11 +1,11 @@
-from tornado import gen, testing
+from tornado import gen
 from unittest import skip
 
 from test.test_amqp import TestCase as AMQPTestCase
 
 
 class TestCase(AMQPTestCase):
-    @testing.gen_test
+    @gen.coroutine
     def create_channel(self, connection=None, cleanup=True, publisher_confirms=False, **kwargs):
         if connection is None:
             connection = yield self.create_connection()
@@ -13,7 +13,7 @@ class TestCase(AMQPTestCase):
         channel = yield connection.channel(publisher_confirms=publisher_confirms, **kwargs)
 
         if cleanup:
-            self.addCleanup(channel.close)
+            self.addCleanup(self.wait_for, channel.close)
 
         raise gen.Return(channel)
 

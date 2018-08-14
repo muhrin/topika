@@ -37,12 +37,13 @@ class BaseTestCase(AsyncTestCase):
     def tearDown(self):
         while self._async_cleanups:
             function, args, kwargs = self._async_cleanups.pop(-1)
-            # try:
             self.loop.run_sync(functools.partial(function, *args, **kwargs))
-            # except Exception as e:
-                # print(e)
 
         super(BaseTestCase, self).tearDown()
+
+    @gen.coroutine
+    def wait_for(self, fn, *args, **kwargs):
+        yield fn(*args, **kwargs)
 
     def addCleanup(self, function, *args, **kwargs):
         """
@@ -71,10 +72,7 @@ class BaseTestCase(AsyncTestCase):
         client = yield connect(AMQP_URL, loop=self.loop)
 
         if cleanup:
-            @gen.coroutine
-            def close():
-                yield client.close()
-            self.addCleanup(close)
+            self.addCleanup(self.wait_for, client.close)
 
         raise gen.Return(client)
 
@@ -89,7 +87,7 @@ class BaseTestCase(AsyncTestCase):
         channel = yield connection.channel(**kwargs)
 
         if cleanup:
-            self.addCleanup(channel.close)
+            self.addCleanup(self.wait_for, channel.close)
 
         raise gen.Return(channel)
 
@@ -104,7 +102,7 @@ class BaseTestCase(AsyncTestCase):
             channel = kwargs.pop('channel')
 
         queue = yield channel.declare_queue(*args, **kwargs)
-        self.addCleanup(queue.delete)
+        self.addCleanup(self.wait_for, queue.delete)
         raise gen.Return(queue)
 
     @gen.coroutine
@@ -118,5 +116,5 @@ class BaseTestCase(AsyncTestCase):
             channel = kwargs.pop('channel')
 
         exchange = yield channel.declare_exchange(*args, **kwargs)
-        self.addCleanup(exchange.delete)
+        self.addCleanup(self.wait_for, exchange.delete)
         raise gen.Return(exchange)

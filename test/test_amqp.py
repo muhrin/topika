@@ -25,7 +25,6 @@ from topika import connect, Message, DeliveryMode
 from topika.exceptions import MessageProcessError, ProbableAuthenticationError
 from topika.exchange import ExchangeType
 from topika.tools import wait
-# from unittest import mock
 from . import BaseTestCase, AMQP_URL
 
 log = logging.getLogger(__name__)
