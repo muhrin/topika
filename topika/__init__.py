@@ -13,12 +13,12 @@ from .robust_connection import connect_robust
 from .exceptions import AMQPException, MessageProcessError
 from .compat import ConnectionError, ConnectionRefusedError
 
-# from .version import __author__, __version__, author_info, package_info, package_license, version_info
+from .version import __author__, __version__, author_info, package_info, package_license, version_info
 
 
 __all__ = (
-    # '__author__',
-    # '__version__',
+    '__author__',
+    '__version__',
     'connect',
     'connect_robust',
     'Connection',
@@ -29,11 +29,11 @@ __all__ = (
     'Queue',
     'Message',
     'IncomingMessage',
-    # 'author_info',
-    # 'package_info',
+    'author_info',
+    'package_info',
     # 'patterns',
-    # 'version_info',
-    # 'package_license',
+    'version_info',
+    'package_license',
     'AMQPException',
     'MessageProcessError',
     'ConnectionError',

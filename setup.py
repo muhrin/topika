@@ -48,7 +48,7 @@ setup(
     install_requires=[
         'tornado>=5.0, <6.0',
         'future',
-        'pika-dev>=1.0.0b1.dev1, <2.0',
+        'pika==1.0.0b1',
         'pyyaml>=3.0, <4.0',
         'shortuuid',
         'furl'
@@ -60,6 +60,9 @@ setup(
         ':python_version<"3.3"': ['mock'],
         ':python_version<"3.2"': ['backports.tempfile'],
     },
+    dependency_links=[
+        'https://github.com/pika/pika/archive/c00648bf40635c8e8032814f30d2488df44961ec.zip#egg=pika-1.0.0b1'
+    ],
     packages=['topika'],
     test_suite='test'
 )
