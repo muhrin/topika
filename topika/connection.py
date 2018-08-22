@@ -137,7 +137,7 @@ class Connection(object):
 
             @tornado.gen.coroutine
             def main(loop):
-                connection = await aio_pika.connect(
+                connection = yield topika.connect(
                     "amqp://guest:guest@127.0.0.1/"
                 )
                 topika.create_task(async_close(connection))
@@ -154,7 +154,7 @@ class Connection(object):
 
     @gen.coroutine
     def connect(self):
-        """ Connect to AMQP server. This method should be called after :func:`aio_pika.connection.Connection.__init__`
+        """ Connect to AMQP server. This method should be called after :func:`topika.connection.Connection.__init__`
 
         .. note::
             This method is called by :func:`connect`. You shouldn't call it explicitly.
@@ -198,24 +198,25 @@ class Connection(object):
         Example:
 
         .. code-block:: python
+            from tornado import gen
+            import topika
 
-            import aio_pika
-
-            async def main(loop):
-                connection = await aio_pika.connect(
+            @gen.coroutine
+            def main(loop):
+                connection = yield topika.connect(
                     "amqp://guest:guest@127.0.0.1/"
                 )
 
-                channel1 = connection.channel()
-                await channel1.close()
+                channel1 = yield connection.channel()
+                yield channel1.close()
 
                 # Creates channel with specific channel number
-                channel42 = connection.channel(42)
-                await channel42.close()
+                channel42 = yield connection.channel(42)
+                yield channel42.close()
 
                 # For working with transactions
                 channel_no_confirms = connection.channel(publisher_confirms=True)
-                await channel_no_confirms.close()
+                yield channel_no_confirms.close()
 
         :param channel_number: specify the channel number explicit
         :type channel_number: int
@@ -225,7 +226,7 @@ class Connection(object):
             :func:`aio_pika.Exchange.publish` method will be return :class:`None`
         :type publisher_confirms: bool
         :param on_return_raises:
-            raise an :class:`aio_pika.exceptions.UnroutableError`
+            raise an :class:`topika.exceptions.UnroutableError`
             when mandatory message will be returned
         :rtype: :class:`Generator[Any, None, Channel]`
         """

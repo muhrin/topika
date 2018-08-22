@@ -79,6 +79,7 @@ class Channel(BaseChannel):
 
     @property
     def _channel_maker(self):
+        assert self._connection
         return self._connection._connection.channel
 
     @property
@@ -250,7 +251,7 @@ class Channel(BaseChannel):
                 LOGGER.debug("Can't publish message because connection is inactive")
                 yield gen.sleep(1)
 
-            f = self._create_future()
+            publish_future = self._create_future()
             self._delivery_tag += 1
 
             if self._on_return_raises:
@@ -265,11 +266,11 @@ class Channel(BaseChannel):
                 self._connection._connection.close(reply_code=500, reply_text="Incorrect state")
             else:
                 if self._publisher_confirms:
-                    self._confirmations[self._delivery_tag] = f
+                    self._confirmations[self._delivery_tag] = publish_future
                 else:
-                    f.set_result(None)
+                    publish_future.set_result(None)
 
-            raise gen.Return((yield f))
+            raise gen.Return((yield publish_future))
 
     @BaseChannel._ensure_channel_is_open
     @gen.coroutine

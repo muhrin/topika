@@ -95,7 +95,7 @@ class Queue(BaseChannel):
         return f
 
     @BaseChannel._ensure_channel_is_open
-    def bind(self, exchange, routing_key=None,arguments=None, timeout=None):
+    def bind(self, exchange, routing_key=None, arguments=None, timeout=None):
 
         """ A binding is a relationship between an exchange and a queue. This can be
         simply read as: the queue is interested in messages from this exchange.
