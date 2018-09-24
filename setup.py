@@ -46,7 +46,7 @@ setup(
     # http://blog.miguelgrinberg.com/post/the-package-dependency-blues
     # for a useful dicussion
     install_requires=[
-        'tornado>=5.0, <6.0',
+        'tornado>=4.0, <6.0',
         'future',
         'pika==1.0.0b1',
         'pyyaml>=3.0, <4.0',
