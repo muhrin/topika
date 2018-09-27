@@ -103,7 +103,7 @@ class RobustConnection(Connection):
         if not future.done():
             future.set_result(None)
 
-        self.loop.add_callback(
+        self.loop.call_later(
             self.reconnect_interval,
             lambda: self.loop.create_task(self.connect())
         )

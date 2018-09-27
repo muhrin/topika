@@ -109,7 +109,6 @@ class Message(object):
         :param app_id: app id
         :type app_id: str
         """
-
         self.__lock = False
         self.body = body if isinstance(body, bytes) else bytes(body)
         self.body_size = len(self.body) if self.body else 0
