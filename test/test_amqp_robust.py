@@ -6,6 +6,7 @@ from test.test_amqp import TestCase as AMQPTestCase
 
 
 class TestCase(AMQPTestCase):
+
     @gen.coroutine
     def create_connection(self, cleanup=True):
         client = yield connect_robust(AMQP_URL, loop=self.loop)

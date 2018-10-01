@@ -25,18 +25,19 @@ LOGGER = logging.getLogger(__name__)
 class Connection(object):
     """ Connection abstraction """
 
-    __slots__ = (
-        'loop', '__closing', '_connection', 'future_store', '__sender_lock',
-        '_io_loop', '__connection_parameters', '__credentials',
-        '__write_lock', '_channels', '__close_started'
-    )
+    __slots__ = ('loop', '__closing', '_connection', 'future_store', '__sender_lock', '_io_loop',
+                 '__connection_parameters', '__credentials', '__write_lock', '_channels', '__close_started')
 
     CHANNEL_CLASS = Channel
 
-    def __init__(self, host='localhost',
-                 port=5672, login='guest',
-                 password='guest', virtual_host='/',
-                 loop=None, **kwargs):
+    def __init__(self,
+                 host='localhost',
+                 port=5672,
+                 login='guest',
+                 password='guest',
+                 virtual_host='/',
+                 loop=None,
+                 **kwargs):
 
         self.loop = loop if loop else ioloop.IOLoop.current()
         self.future_store = common.FutureStore(loop=self.loop)
@@ -44,12 +45,7 @@ class Connection(object):
         self.__credentials = PlainCredentials(login, password) if login else ExternalCredentials()
 
         self.__connection_parameters = ConnectionParameters(
-            host=host,
-            port=port,
-            credentials=self.__credentials,
-            virtual_host=virtual_host,
-            **kwargs
-        )
+            host=host, port=port, credentials=self.__credentials, virtual_host=virtual_host, **kwargs)
 
         self._channels = dict()
         self._connection = None
@@ -191,8 +187,7 @@ class Connection(object):
             raise gen.Return(result)
 
     @gen.coroutine
-    def channel(self, channel_number=None, publisher_confirms=True,
-                on_return_raises=False):
+    def channel(self, channel_number=None, publisher_confirms=True, on_return_raises=False):
         """ Coroutine which returns new instance of :class:`Channel`.
 
         Example:
@@ -233,10 +228,13 @@ class Connection(object):
         with (yield self.__write_lock.acquire()):
             LOGGER.debug("Creating AMQP channel for conneciton: %r", self)
 
-            channel = self.CHANNEL_CLASS(self, self.loop, self.future_store,
-                                         channel_number=channel_number,
-                                         publisher_confirms=publisher_confirms,
-                                         on_return_raises=on_return_raises)
+            channel = self.CHANNEL_CLASS(
+                self,
+                self.loop,
+                self.future_store,
+                channel_number=channel_number,
+                publisher_confirms=publisher_confirms,
+                on_return_raises=on_return_raises)
             yield channel.initialize()
 
             LOGGER.debug("Channel created: %r", channel)
@@ -372,11 +370,16 @@ class Connection(object):
 
 
 @gen.coroutine
-def connect(url=None, host='localhost',
-            port=5672, login='guest',
-            password='guest', virtualhost='/',
-            loop=None, ssl_options=None,
-            connection_class=Connection, **kwargs):
+def connect(url=None,
+            host='localhost',
+            port=5672,
+            login='guest',
+            password='guest',
+            virtualhost='/',
+            loop=None,
+            ssl_options=None,
+            connection_class=Connection,
+            **kwargs):
     """ Make connection to the broker.
 
     Example:
@@ -469,10 +472,14 @@ def connect(url=None, host='localhost',
             ssl_options[key] = url.query[key]
 
     connection = connection_class(
-        host=host, port=port, login=login, password=password,
-        virtual_host=virtualhost, loop=loop,
-        ssl_options=ssl_options, **kwargs
-    )
+        host=host,
+        port=port,
+        login=login,
+        password=password,
+        virtual_host=virtualhost,
+        loop=loop,
+        ssl_options=ssl_options,
+        **kwargs)
 
     yield connection.connect()
     raise gen.Return(connection)

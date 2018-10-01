@@ -32,6 +32,7 @@ skip_for_py34 = skipIf(version_info < (3, 5), "async/await syntax supported only
 
 
 class TestCase(BaseTestCase):
+
     @testing.gen_test
     def test_channel_close(self):
         client = yield self.create_connection()
@@ -103,13 +104,7 @@ class TestCase(BaseTestCase):
         body = bytes(shortuuid.uuid(), 'utf-8')
 
         with self.assertRaises(ValueError):
-            f = exchange.publish(
-                Message(
-                    body, content_type='text/plain',
-                    headers={'foo': 'bar'}
-                ),
-                routing_key
-            )
+            f = exchange.publish(Message(body, content_type='text/plain', headers={'foo': 'bar'}), routing_key)
             yield f
 
         yield queue.unbind(exchange, routing_key)
@@ -145,13 +140,7 @@ class TestCase(BaseTestCase):
 
         body = bytes(shortuuid.uuid(), 'utf-8')
 
-        result = yield exchange.publish(
-            Message(
-                body, content_type='text/plain',
-                headers={'foo': 'bar'}
-            ),
-            routing_key
-        )
+        result = yield exchange.publish(Message(body, content_type='text/plain', headers={'foo': 'bar'}), routing_key)
         self.assertTrue(result)
 
         incoming_message = yield queue.get(timeout=5)
@@ -174,13 +163,7 @@ class TestCase(BaseTestCase):
 
         body = bytes(shortuuid.uuid(), 'utf-8')
 
-        result = yield exchange.publish(
-            Message(
-                body, content_type='text/plain',
-                headers={'foo': 'bar'}
-            ),
-            routing_key
-        )
+        result = yield exchange.publish(Message(body, content_type='text/plain', headers={'foo': 'bar'}), routing_key)
         self.assertIsNone(result)
 
         incoming_message = yield queue.get(timeout=5)
@@ -204,13 +187,7 @@ class TestCase(BaseTestCase):
         body = bytes(shortuuid.uuid(), 'utf-8')
 
         yield exchange.publish(
-            Message(
-                body, content_type='text/plain',
-                headers={'foo': 'bar'},
-                delivery_mode=None
-            ),
-            routing_key
-        )
+            Message(body, content_type='text/plain', headers={'foo': 'bar'}, delivery_mode=None), routing_key)
 
         incoming_message = yield queue.get(timeout=5)
         incoming_message.ack()
@@ -237,13 +214,7 @@ class TestCase(BaseTestCase):
 
         body = bytes(shortuuid.uuid(), 'utf-8')
 
-        yield src_exchange.publish(
-            Message(
-                body, content_type='text/plain',
-                headers={'foo': 'bar'}
-            ),
-            routing_key
-        )
+        yield src_exchange.publish(Message(body, content_type='text/plain', headers={'foo': 'bar'}), routing_key)
 
         incoming_message = yield queue.get(timeout=5)
         incoming_message.ack()
@@ -268,7 +239,9 @@ class TestCase(BaseTestCase):
         self.maxDiff = None
 
         info = {
-            'headers': {"foo": "bar"},
+            'headers': {
+                "foo": "bar"
+            },
             'content_type': "application/json",
             'content_encoding': "text",
             'delivery_mode': DeliveryMode.PERSISTENT.value,
@@ -298,8 +271,7 @@ class TestCase(BaseTestCase):
             timestamp=info['timestamp'],
             type='0',
             user_id='guest',
-            app_id='test'
-        )
+            app_id='test')
 
         yield exchange.publish(msg, routing_key)
 
@@ -332,13 +304,7 @@ class TestCase(BaseTestCase):
 
         body = bytes(shortuuid.uuid(), 'utf-8')
 
-        yield exchange.publish(
-            Message(
-                body, content_type='text/plain',
-                headers={'foo': 'bar'}
-            ),
-            routing_key
-        )
+        yield exchange.publish(Message(body, content_type='text/plain', headers={'foo': 'bar'}), routing_key)
 
         incoming_message = yield queue.get(timeout=5)
 
@@ -355,13 +321,7 @@ class TestCase(BaseTestCase):
 
         self.assertEqual(incoming_message.body, body)
 
-        yield exchange.publish(
-            Message(
-                body, content_type='text/plain',
-                headers={'foo': 'bar'}
-            ),
-            routing_key
-        )
+        yield exchange.publish(Message(body, content_type='text/plain', headers={'foo': 'bar'}), routing_key)
 
         incoming_message = yield queue.get(timeout=5)
 
@@ -378,13 +338,7 @@ class TestCase(BaseTestCase):
 
         self.assertEqual(incoming_message.body, body)
 
-        yield exchange.publish(
-            Message(
-                body, content_type='text/plain',
-                headers={'foo': 'bar'}
-            ),
-            routing_key
-        )
+        yield exchange.publish(Message(body, content_type='text/plain', headers={'foo': 'bar'}), routing_key)
 
         incoming_message = yield queue.get(timeout=5)
         with self.assertRaises(AssertionError):
@@ -413,13 +367,7 @@ class TestCase(BaseTestCase):
 
         body = bytes(shortuuid.uuid(), 'utf-8')
 
-        yield exchange.publish(
-            Message(
-                body, content_type='text/plain',
-                headers={'foo': 'bar'}
-            ),
-            routing_key
-        )
+        yield exchange.publish(Message(body, content_type='text/plain', headers={'foo': 'bar'}), routing_key)
 
         incoming_message = yield queue.get(timeout=5)
 
@@ -533,13 +481,7 @@ class TestCase(BaseTestCase):
 
         body = bytes(shortuuid.uuid(), 'utf-8')
 
-        yield exchange.publish(
-            Message(
-                body, content_type='text/plain',
-                headers={'foo': 'bar'}
-            ),
-            routing_key
-        )
+        yield exchange.publish(Message(body, content_type='text/plain', headers={'foo': 'bar'}), routing_key)
 
         incoming_message = yield queue.get(timeout=5)
         incoming_message.ack()
@@ -567,13 +509,7 @@ class TestCase(BaseTestCase):
 
         body = bytes(shortuuid.uuid(), 'utf-8')
 
-        yield exchange.publish(
-            Message(
-                body, content_type='text/plain',
-                headers={'foo': 'bar'}
-            ),
-            routing_key
-        )
+        yield exchange.publish(Message(body, content_type='text/plain', headers={'foo': 'bar'}), routing_key)
 
         incoming_message = yield queue.get(timeout=5)
         incoming_message.reject(requeue=False)
@@ -612,13 +548,7 @@ class TestCase(BaseTestCase):
 
         yield queue.consume(handle)
 
-        yield exchange.publish(
-            Message(
-                body, content_type='text/plain',
-                headers={'foo': 'bar'}
-            ),
-            routing_key
-        )
+        yield exchange.publish(Message(body, content_type='text/plain', headers={'foo': 'bar'}), routing_key)
 
         if not f.done():
             yield f
@@ -652,13 +582,7 @@ class TestCase(BaseTestCase):
 
         yield queue.consume(handle)
 
-        yield exchange.publish(
-            Message(
-                body, content_type='text/plain',
-                headers={'foo': 'bar'}
-            ),
-            routing_key
-        )
+        yield exchange.publish(Message(body, content_type='text/plain', headers={'foo': 'bar'}), routing_key)
 
         if not f.done():
             yield f
@@ -682,41 +606,20 @@ class TestCase(BaseTestCase):
 
         body = bytes(shortuuid.uuid(), 'utf-8')
 
-        yield exchange.publish(
-            Message(
-                body,
-                content_type='text/plain',
-                headers={'foo': 'bar'}
-            ),
-            routing_key
-        )
+        yield exchange.publish(Message(body, content_type='text/plain', headers={'foo': 'bar'}), routing_key)
 
         incoming_message = yield queue.get(timeout=5, no_ack=True)
 
         with self.assertRaises(TypeError):
             incoming_message.ack()
 
-        yield exchange.publish(
-            Message(
-                body,
-                content_type='text/plain',
-                headers={'foo': 'bar'}
-            ),
-            routing_key
-        )
+        yield exchange.publish(Message(body, content_type='text/plain', headers={'foo': 'bar'}), routing_key)
 
         incoming_message = yield queue.get(timeout=5)
 
         incoming_message.reject()
 
-        yield exchange.publish(
-            Message(
-                body,
-                content_type='text/plain',
-                headers={'foo': 'bar'}
-            ),
-            routing_key
-        )
+        yield exchange.publish(Message(body, content_type='text/plain', headers={'foo': 'bar'}), routing_key)
 
         incoming_message = yield queue.get(timeout=5, no_ack=True)
 
@@ -743,13 +646,7 @@ class TestCase(BaseTestCase):
         try:
             body = bytes(shortuuid.uuid(), 'utf-8')
 
-            yield exchange.publish(
-                Message(
-                    body, content_type='text/plain',
-                    headers={'foo': 'bar'}
-                ),
-                routing_key
-            )
+            yield exchange.publish(Message(body, content_type='text/plain', headers={'foo': 'bar'}), routing_key)
 
             yield queue.purge()
 
@@ -771,10 +668,7 @@ class TestCase(BaseTestCase):
         amqp_url.password = uuid.uuid4().hex
 
         with self.assertRaises(pika.exceptions.ConnectionClosedByBroker):
-            yield connect(
-                amqp_url,
-                loop=self.loop
-            )
+            yield connect(amqp_url, loop=self.loop)
 
     @testing.gen_test
     def test_set_qos(self):
@@ -815,13 +709,9 @@ class TestCase(BaseTestCase):
                 'x-message-ttl': 300,
                 'x-dead-letter-exchange': 'dlx',
                 'x-dead-letter-routing-key': dlx_routing_key
-            }
-        )
+            })
 
-        dlx_queue = yield channel.declare_queue(
-            "%s_dlx_queue" % suffix,
-            auto_delete=True
-        )
+        dlx_queue = yield channel.declare_queue("%s_dlx_queue" % suffix, auto_delete=True)
 
         yield dlx_queue.consume(dlx_handle)
         yield dlx_queue.bind(dlx_exchange, dlx_routing_key)
@@ -832,15 +722,10 @@ class TestCase(BaseTestCase):
         try:
             yield direct_exchange.publish(
                 Message(
-                    body,
-                    content_type='text/plain',
-                    headers={
+                    body, content_type='text/plain', headers={
                         'x-message-ttl': 100,
                         'x-dead-letter-exchange': 'dlx',
-                    }
-                ),
-                routing_key
-            )
+                    }), routing_key)
 
             if not f.done():
                 yield f
@@ -887,13 +772,7 @@ class TestCase(BaseTestCase):
         body = bytes(shortuuid.uuid(), 'utf-8')
 
         yield channel.default_exchange.publish(
-            Message(
-                body,
-                content_type='text/plain',
-                headers={'foo': 'bar'}
-            ),
-            self.get_random_name("test_basic_return")
-        )
+            Message(body, content_type='text/plain', headers={'foo': 'bar'}), self.get_random_name("test_basic_return"))
 
         returned = yield f
 
@@ -917,13 +796,7 @@ class TestCase(BaseTestCase):
         body = bytes(shortuuid.uuid(), 'utf-8')
 
         yield channel.default_exchange.publish(
-            Message(
-                body,
-                content_type='text/plain',
-                headers={'foo': 'bar'}
-            ),
-            self.get_random_name("test_basic_return")
-        )
+            Message(body, content_type='text/plain', headers={'foo': 'bar'}), self.get_random_name("test_basic_return"))
 
         returned = yield f
 
@@ -937,13 +810,9 @@ class TestCase(BaseTestCase):
 
         channel = yield client.channel()  # type: topika.Channel
 
-        dlx_queue = yield channel.declare_queue(
-            self.get_random_name("test_dlx")
-        )  # type: topika.Queue
+        dlx_queue = yield channel.declare_queue(self.get_random_name("test_dlx"))  # type: topika.Queue
 
-        dlx_exchange = yield channel.declare_exchange(
-            self.get_random_name("dlx"),
-        )  # type: topika.Exchange
+        dlx_exchange = yield channel.declare_exchange(self.get_random_name("dlx"),)  # type: topika.Exchange
 
         yield dlx_queue.bind(dlx_exchange, routing_key=dlx_queue.name)
 
@@ -953,20 +822,12 @@ class TestCase(BaseTestCase):
                 "x-message-ttl": 10000,
                 "x-dead-letter-exchange": dlx_exchange.name,
                 "x-dead-letter-routing-key": dlx_queue.name,
-            }
-        )  # type: topika.Queue
+            })  # type: topika.Queue
 
         body = bytes(shortuuid.uuid(), 'utf-8')
 
         yield channel.default_exchange.publish(
-            Message(
-                body,
-                content_type='text/plain',
-                headers={'foo': 'bar'},
-                expiration=0.5
-            ),
-            queue.name
-        )
+            Message(body, content_type='text/plain', headers={'foo': 'bar'}, expiration=0.5), queue.name)
 
         f = concurrent.Future()
 
@@ -1008,13 +869,7 @@ class TestCase(BaseTestCase):
 
         body = bytes(shortuuid.uuid(), 'utf-8') * 9999999
 
-        yield exchange.publish(
-            Message(
-                body, content_type='text/plain',
-                headers={'foo': 'bar'}
-            ),
-            routing_key
-        )
+        yield exchange.publish(Message(body, content_type='text/plain', headers={'foo': 'bar'}), routing_key)
 
         incoming_message = yield queue.get(timeout=5)
         incoming_message.ack()
@@ -1076,10 +931,7 @@ class TestCase(BaseTestCase):
         queue_name = self.get_random_name("queue", "declaration-result")
         queue1 = yield channel1.declare_queue(queue_name, auto_delete=True)
 
-        yield channel1.default_exchange.publish(
-            Message(body=b'test'),
-            routing_key=queue1.name
-        )
+        yield channel1.default_exchange.publish(Message(body=b'test'), routing_key=queue1.name)
 
         queue2 = yield channel2.declare_queue(queue_name, passive=True)
         yield queue2.get()
@@ -1169,7 +1021,8 @@ class TestCase(BaseTestCase):
         for _ in range(100):
             with self.assertRaises(topika.exceptions.UnroutableError):
                 yield channel.default_exchange.publish(
-                    Message(body=body), routing_key=queue_name,
+                    Message(body=body),
+                    routing_key=queue_name,
                 )
 
         yield client.close()
@@ -1226,6 +1079,7 @@ class TestCase(BaseTestCase):
 
 
 class MessageTestCase(unittest.TestCase):
+
     def test_message_copy(self):
         msg1 = Message(bytes(shortuuid.uuid(), 'utf-8'))
         msg2 = copy(msg1)
@@ -1238,7 +1092,9 @@ class MessageTestCase(unittest.TestCase):
         body = bytes(shortuuid.uuid(), 'utf-8')
 
         info = {
-            'headers': {"foo": "bar"},
+            'headers': {
+                "foo": "bar"
+            },
             'content_type': "application/json",
             'content_encoding': "text",
             'delivery_mode': DeliveryMode.PERSISTENT.value,
@@ -1268,7 +1124,6 @@ class MessageTestCase(unittest.TestCase):
             timestamp=info['timestamp'],
             type='0',
             user_id='guest',
-            app_id='test'
-        )
+            app_id='test')
 
         self.assertDictEqual(info, msg.info())

@@ -1,0 +1,21 @@
+# yet another python formatter
+- repo: local
+  hooks:
+  # yapf = yet another python formatter
+  - id: yapf
+    name: yapf
+    entry: yapf
+    language: system
+    types: [python]
+    args: ["-i"]
+    exclude: &exclude_files >
+      (?x)^(
+        ^docs/|
+      )$
+
+- repo: git://github.com/pre-commit/pre-commit-hooks
+  sha: v1.1.1
+  hooks:
+  - id: check-yaml
+
+

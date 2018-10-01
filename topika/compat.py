@@ -10,7 +10,6 @@ except ImportError:
 
     T_co = TypeVar('T_co', covariant=True)
 
-
     @six.add_metaclass(ABCMeta)
     class _Awaitable(object):
 
@@ -20,13 +19,14 @@ except ImportError:
         def __await__(self):
             yield
 
-
     class Awaitable(Generic[T_co], _Awaitable):
         __slots__ = ()
+
 
 try:
     from contextlib import suppress
 except ImportError:
+
     @contextlib.contextmanager
     def suppress(*exceptions):
         """
@@ -39,6 +39,7 @@ except ImportError:
         except exc:
             pass
 
+
 try:
     # Either take the native ones
     ConnectionError = ConnectionError
@@ -48,13 +49,14 @@ except NameError:
     class ConnectionError(Exception):
         pass
 
-
     class ConnectionRefusedError(ConnectionError):
         pass
+
 
 try:
     from contextlib import suppress
 except ImportError:
+
     @contextlib.contextmanager
     def suppress(*exceptions):
         excs = exceptions or Exception
@@ -62,5 +64,6 @@ except ImportError:
             yield
         except excs:
             pass
+
 
 __all__ = ('ConnectionError', 'ConnectionRefusedError')

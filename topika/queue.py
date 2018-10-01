@@ -21,12 +21,10 @@ DeclarationResult = namedtuple('DeclarationResult', ('message_count', 'consumer_
 class Queue(BaseChannel):
     """ AMQP queue abstraction """
 
-    __slots__ = ('name', 'durable', 'exclusive',
-                 'auto_delete', 'arguments', '_get_lock',
-                 '_channel', '__closing', 'declaration_result')
+    __slots__ = ('name', 'durable', 'exclusive', 'auto_delete', 'arguments', '_get_lock', '_channel', '__closing',
+                 'declaration_result')
 
-    def __init__(self, loop, future_store,
-                 channel, name, durable, exclusive, auto_delete, arguments):
+    def __init__(self, loop, future_store, channel, name, durable, exclusive, auto_delete, arguments):
         """
         :type loop: :class:`tornado.ioloop.IOLoop`
         :type future_store: :class:`topika.FutureStore`
@@ -53,8 +51,11 @@ class Queue(BaseChannel):
 
     def __repr__(self):
         return "<Queue(%s): auto_delete=%s, durable=%s, exclusive=%s, arguments=%r>" % (
-            self, self.auto_delete, self.durable,
-            self.exclusive, self.arguments,
+            self,
+            self.auto_delete,
+            self.durable,
+            self.exclusive,
+            self.arguments,
         )
 
     @BaseChannel._ensure_channel_is_open
@@ -79,8 +80,7 @@ class Queue(BaseChannel):
             exclusive=self.exclusive,
             auto_delete=self.auto_delete,
             arguments=self.arguments,
-            callback=f.set_result
-        )
+            callback=f.set_result)
 
         def on_queue_declared(result):
             res = result.result()
@@ -96,7 +96,6 @@ class Queue(BaseChannel):
 
     @BaseChannel._ensure_channel_is_open
     def bind(self, exchange, routing_key=None, arguments=None, timeout=None):
-
         """ A binding is a relationship between an exchange and a queue. This can be
         simply read as: the queue is interested in messages from this exchange.
 
@@ -114,10 +113,8 @@ class Queue(BaseChannel):
         :raises tornado.gen.TimeoutError: when the binding timeout period has elapsed.
         :rtype: :class:`tornado.concurrent.Future`
         """
-        LOGGER.debug(
-            "Binding queue %r: exchange=%r, routing_key=%r, arguments=%r",
-            self, exchange, routing_key, arguments
-        )
+        LOGGER.debug("Binding queue %r: exchange=%r, routing_key=%r, arguments=%r", self, exchange, routing_key,
+                     arguments)
 
         f = self._create_future(timeout)
 
@@ -126,8 +123,7 @@ class Queue(BaseChannel):
             exchange=Exchange._get_exchange_name(exchange),
             routing_key=routing_key,
             arguments=arguments,
-            callback=f.set_result
-        )
+            callback=f.set_result)
 
         return f
 
@@ -147,10 +143,8 @@ class Queue(BaseChannel):
         :rtype: :class:`tornado.concurrent.Future`
         """
 
-        LOGGER.debug(
-            "Unbinding queue %r: exchange=%r, routing_key=%r, arguments=%r",
-            self, exchange, routing_key, arguments
-        )
+        LOGGER.debug("Unbinding queue %r: exchange=%r, routing_key=%r, arguments=%r", self, exchange, routing_key,
+                     arguments)
 
         f = self._create_future(timeout)
 
@@ -159,16 +153,13 @@ class Queue(BaseChannel):
             exchange=Exchange._get_exchange_name(exchange),
             routing_key=routing_key,
             arguments=arguments,
-            callback=f.set_result
-        )
+            callback=f.set_result)
 
         return f
 
     @BaseChannel._ensure_channel_is_open
     @tools.coroutine
-    def consume(self, callback, no_ack=False,
-                exclusive=False, arguments=None,
-                consumer_tag=None, timeout=None):
+    def consume(self, callback, no_ack=False, exclusive=False, arguments=None, consumer_tag=None, timeout=None):
         """ Start to consuming the :class:`Queue`.
 
         :param timeout: :class:`tornado.gen.TimeoutError` will be raises when the
@@ -243,17 +234,13 @@ class Queue(BaseChannel):
         :return: Basic.CancelOk when operation completed successfully
         """
         f = self._create_future(timeout)
-        self._channel.basic_cancel(
-            consumer_tag=consumer_tag,
-            callback=f.set_result
-        )
+        self._channel.basic_cancel(consumer_tag=consumer_tag, callback=f.set_result)
 
         return f
 
     @BaseChannel._ensure_channel_is_open
     @gen.coroutine
     def get(self, no_ack=False, timeout=None, fail=True):
-
         """ Get message from the queue.
 
         :param no_ack: if :class:`True` you don't need to call
@@ -345,12 +332,7 @@ class Queue(BaseChannel):
 
         future = self._create_future(timeout)
 
-        self._channel.queue_delete(
-            queue=self.name,
-            if_unused=if_unused,
-            if_empty=if_empty,
-            callback=future.set_result
-        )
+        self._channel.queue_delete(queue=self.name, if_unused=if_unused, if_empty=if_empty, callback=future.set_result)
 
         return future
 
@@ -484,6 +466,5 @@ class Queue(BaseChannel):
 #         yield from self.close()
 #
 #     __anext__ = __next__
-
 
 __all__ = 'Queue', 'QueueIterator'

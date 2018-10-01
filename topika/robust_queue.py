@@ -18,8 +18,8 @@ DeclarationResult = namedtuple('DeclarationResult', ('message_count', 'consumer_
 
 
 class RobustQueue(Queue):
-    def __init__(self, loop, future_store, channel,
-                 name, durable, exclusive, auto_delete, arguments):
+
+    def __init__(self, loop, future_store, channel, name, durable, exclusive, auto_delete, arguments):
         """
         :type loop: :class:`tornado.ioloop.IOLoop`
         :type future_store: :class:`topika.FutureStore`
@@ -31,8 +31,8 @@ class RobustQueue(Queue):
         :type arguments: dict
         """
 
-        super(RobustQueue, self).__init__(loop, future_store, channel, name or "amq_%s" % shortuuid.uuid(),
-                                          durable, exclusive, auto_delete, arguments)
+        super(RobustQueue, self).__init__(loop, future_store, channel, name or "amq_%s" % shortuuid.uuid(), durable,
+                                          exclusive, auto_delete, arguments)
 
         self._consumers = {}
         self._bindings = {}
@@ -56,7 +56,6 @@ class RobustQueue(Queue):
 
     @gen.coroutine
     def bind(self, exchange, routing_key=None, arguments=None, timeout=None):
-
         """ A binding is a relationship between an exchange and a queue. This can be
         simply read as: the queue is interested in messages from this exchange.
 
@@ -76,11 +75,7 @@ class RobustQueue(Queue):
         """
         kwargs = dict(arguments=arguments, timeout=timeout)
 
-        result = yield super(RobustQueue, self).bind(
-            exchange=exchange,
-            routing_key=routing_key,
-            **kwargs
-        )
+        result = yield super(RobustQueue, self).bind(exchange=exchange, routing_key=routing_key, **kwargs)
 
         self._bindings[(exchange, routing_key)] = kwargs
 
@@ -94,9 +89,7 @@ class RobustQueue(Queue):
         raise gen.Return(result)
 
     @tools.coroutine
-    def consume(self, callback, no_ack=False,
-                exclusive=False, arguments=None,
-                consumer_tag=None, timeout=None):
+    def consume(self, callback, no_ack=False, exclusive=False, arguments=None, consumer_tag=None, timeout=None):
         """ Start to consuming the :class:`Queue`.
 
         :param callback: Consuming callback. Could be a coroutine.
@@ -116,15 +109,9 @@ class RobustQueue(Queue):
         :raises tornado.gen.TimeoutError: when the consuming timeout period has elapsed.
         :rtype: class:`Generator[Any, None, ConsumerTag]`
         """
-        kwargs = dict(
-            callback=callback,
-            no_ack=no_ack,
-            exclusive=exclusive,
-            arguments=arguments
-        )
+        kwargs = dict(callback=callback, no_ack=no_ack, exclusive=exclusive, arguments=arguments)
 
-        consumer_tag = yield super(RobustQueue, self).consume(
-            consumer_tag=consumer_tag, **kwargs)
+        consumer_tag = yield super(RobustQueue, self).consume(consumer_tag=consumer_tag, **kwargs)
 
         self._consumers[consumer_tag] = kwargs
 

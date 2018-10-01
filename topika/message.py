@@ -63,22 +63,25 @@ def _convert_none(_):
 class Message(object):
     """ AMQP message abstraction """
 
-    __slots__ = (
-        "body", "headers", "content_type", "content_encoding", "body_size",
-        "delivery_mode", "priority", "correlation_id", "reply_to",
-        "expiration", "message_id", "timestamp", "type", "user_id", "app_id",
-        "__lock"
-    )
+    __slots__ = ("body", "headers", "content_type", "content_encoding", "body_size", "delivery_mode", "priority",
+                 "correlation_id", "reply_to", "expiration", "message_id", "timestamp", "type", "user_id", "app_id",
+                 "__lock")
 
-    def __init__(self, body, headers=None, content_type=None,
-                 content_encoding=None, delivery_mode=None,
-                 priority=None, correlation_id=None,
-                 reply_to=None, expiration=None,
+    def __init__(self,
+                 body,
+                 headers=None,
+                 content_type=None,
+                 content_encoding=None,
+                 delivery_mode=None,
+                 priority=None,
+                 correlation_id=None,
+                 reply_to=None,
+                 expiration=None,
                  message_id=None,
                  timestamp=None,
-                 type=None, user_id=None,
+                 type=None,
+                 user_id=None,
                  app_id=None):
-
         """ Creates a new instance of Message
 
         :param body: message body
@@ -207,14 +210,10 @@ class Message(object):
             timestamp=self.timestamp,
             type=self.type,
             user_id=self.user_id,
-            app_id=self.app_id
-        )
+            app_id=self.app_id)
 
     def __repr__(self):
-        return "{name}:{repr}".format(
-            name=self.__class__.__name__,
-            repr=pformat(self.info())
-        )
+        return "{name}:{repr}".format(name=self.__class__.__name__, repr=pformat(self.info()))
 
     def __setattr__(self, key, value):
         if not key.startswith("_") and self.locked:
@@ -244,8 +243,7 @@ class Message(object):
             timestamp=self.timestamp,
             type=self.type,
             user_id=self.user_id,
-            app_id=self.app_id
-        )
+            app_id=self.app_id)
 
 
 class IncomingMessage(Message):
@@ -268,11 +266,8 @@ class IncomingMessage(Message):
     processed but still should be deleted.
 
     """
-    __slots__ = (
-        '_loop', '__channel', 'cluster_id', 'consumer_tag',
-        'delivery_tag', 'exchange', 'routing_key', 'synchronous',
-        'redelivered', '__no_ack', '__processed'
-    )
+    __slots__ = ('_loop', '__channel', 'cluster_id', 'consumer_tag', 'delivery_tag', 'exchange', 'routing_key',
+                 'synchronous', 'redelivered', '__no_ack', '__processed')
 
     def __init__(self, channel, envelope, properties, body, no_ack=False):
         """ Create an instance of :class:`IncomingMessage`
@@ -415,11 +410,7 @@ class IncomingMessage(Message):
         if self.__processed:
             raise MessageProcessError("Message already processed")
 
-        self.__channel.basic_nack(
-            delivery_tag=self.delivery_tag,
-            multiple=multiple,
-            requeue=requeue
-        )
+        self.__channel.basic_nack(delivery_tag=self.delivery_tag, multiple=multiple, requeue=requeue)
 
         self.__processed = True
 
