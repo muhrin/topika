@@ -27,14 +27,17 @@ class Channel(BaseChannel):
     QUEUE_CLASS = queue.Queue
     EXCHANGE_CLASS = exchange.Exchange
 
-    __slots__ = ('_connection', '__closing', '_confirmations', '_delivery_tag',
-                 'loop', '_futures', '_channel', '_on_return_callbacks',
-                 'default_exchange', '_write_lock', '_channel_number',
-                 '_publisher_confirms', '_on_return_raises')
+    __slots__ = ('_connection', '__closing', '_confirmations', '_delivery_tag', 'loop', '_futures', '_channel',
+                 '_on_return_callbacks', 'default_exchange', '_write_lock', '_channel_number', '_publisher_confirms',
+                 '_on_return_raises')
 
-    def __init__(self, connection, loop,
-                 future_store, channel_number=None,
-                 publisher_confirms=True, on_return_raises=False):
+    def __init__(self,
+                 connection,
+                 loop,
+                 future_store,
+                 channel_number=None,
+                 publisher_confirms=True,
+                 on_return_raises=False):
         """
         Create a new instance of the Channel.  Don't call this directly, this should
         be constructed by the connection.
@@ -74,8 +77,7 @@ class Channel(BaseChannel):
             durable=None,
             auto_delete=None,
             internal=None,
-            arguments=None
-        )
+            arguments=None)
 
     @property
     def _channel_maker(self):
@@ -156,10 +158,7 @@ class Channel(BaseChannel):
     def _create_channel(self, timeout=None):
         future = self._create_future(timeout=timeout)
 
-        self._channel_maker(
-            channel_number=self._channel_number,
-            on_open_callback=future.set_result
-        )
+        self._channel_maker(channel_number=self._channel_number, on_open_callback=future.set_result)
 
         channel = yield future  # type: pika.channel.Channel
         if self._publisher_confirms:
@@ -190,8 +189,8 @@ class Channel(BaseChannel):
         future = self._confirmations.pop(method_frame.method.delivery_tag, None)
 
         if not future:
-            LOGGER.info("Unknown delivery tag %d for message confirmation \"%s\"",
-                        method_frame.method.delivery_tag, method_frame.method.NAME)
+            LOGGER.info("Unknown delivery tag %d for message confirmation \"%s\"", method_frame.method.delivery_tag,
+                        method_frame.method.NAME)
             return
 
         try:
@@ -208,9 +207,15 @@ class Channel(BaseChannel):
 
     @BaseChannel._ensure_channel_is_open
     @gen.coroutine
-    def declare_exchange(self, name, type=exchange.ExchangeType.DIRECT,
-                         durable=None, auto_delete=False,
-                         internal=False, passive=False, arguments=None, timeout=None):
+    def declare_exchange(self,
+                         name,
+                         type=exchange.ExchangeType.DIRECT,
+                         durable=None,
+                         auto_delete=False,
+                         internal=False,
+                         passive=False,
+                         arguments=None,
+                         timeout=None):
         """
         :type name: str
         :type type: ExchangeType
@@ -228,11 +233,17 @@ class Channel(BaseChannel):
                 durable = False
 
             exchange = self.EXCHANGE_CLASS(
-                loop=self.loop, future_store=self._futures.create_child(),
-                channel=self._channel, publish_method=self._publish, name=name, type=type,
-                passive=passive, durable=durable, auto_delete=auto_delete, internal=internal,
-                arguments=arguments
-            )
+                loop=self.loop,
+                future_store=self._futures.create_child(),
+                channel=self._channel,
+                publish_method=self._publish,
+                name=name,
+                type=type,
+                passive=passive,
+                durable=durable,
+                auto_delete=auto_delete,
+                internal=internal,
+                arguments=arguments)
 
             yield exchange.declare(timeout=timeout)
 
@@ -274,8 +285,14 @@ class Channel(BaseChannel):
 
     @BaseChannel._ensure_channel_is_open
     @gen.coroutine
-    def declare_queue(self, name=None, durable=None, exclusive=False, passive=False,
-                      auto_delete=False, arguments=None, timeout=None):
+    def declare_queue(self,
+                      name=None,
+                      durable=None,
+                      exclusive=False,
+                      passive=False,
+                      auto_delete=False,
+                      arguments=None,
+                      timeout=None):
         """
         :param name: queue name
         :type name: str
@@ -300,10 +317,8 @@ class Channel(BaseChannel):
             if auto_delete and durable is None:
                 durable = False
 
-            queue = self.QUEUE_CLASS(
-                self.loop, self._futures.create_child(), self._channel, name,
-                durable, exclusive, auto_delete, arguments
-            )
+            queue = self.QUEUE_CLASS(self.loop, self._futures.create_child(), self._channel, name, durable, exclusive,
+                                     auto_delete, arguments)
 
             yield queue.declare(timeout, passive=passive)
             raise gen.Return(queue)
@@ -342,8 +357,7 @@ class Channel(BaseChannel):
 
     @BaseChannel._ensure_channel_is_open
     @gen.coroutine
-    def queue_delete(self, queue_name, timeout=None,
-                     if_unused=False, if_empty=False):
+    def queue_delete(self, queue_name, timeout=None, if_unused=False, if_empty=False):
         """
         :type queue_name: str
         :type timeout: int
@@ -373,9 +387,7 @@ class Channel(BaseChannel):
         with (yield self._write_lock.acquire()):
             f = self._create_future(timeout=timeout)
 
-            self._channel.exchange_delete(
-                exchange=exchange_name, if_unused=if_unused, callback=f.set_result
-            )
+            self._channel.exchange_delete(exchange=exchange_name, if_unused=if_unused, callback=f.set_result)
 
             raise gen.Return((yield f))
 
@@ -384,16 +396,13 @@ class Channel(BaseChannel):
         :rtype: :class:`topika.Transaction`
         """
         if self._publisher_confirms:
-            raise RuntimeError("Cannot create transaction when publisher "
-                               "confirms are enabled")
+            raise RuntimeError("Cannot create transaction when publisher " "confirms are enabled")
 
         tx = transaction.Transaction(self._channel, self._futures.create_child())
 
         self.add_close_callback(tx.on_close_callback)
 
-        tx.closing.add_done_callback(
-            lambda _: self.remove_close_callback(tx.on_close_callback)
-        )
+        tx.closing.add_done_callback(lambda _: self.remove_close_callback(tx.on_close_callback))
 
         return tx
 

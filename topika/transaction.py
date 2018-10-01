@@ -5,6 +5,7 @@ from .exceptions import TransactionClosed
 
 
 class Transaction:
+
     def __init__(self, channel, future_store):
         """
         :type future_store: :class:`FutureStore`

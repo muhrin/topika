@@ -1,6 +1,4 @@
-author_info = (
-    ('Martin Uhrin', 'martin.uhrin@gmail.com'),
-)
+author_info = (('Martin Uhrin', 'martin.uhrin@gmail.com'),)
 
 package_info = "A backport of aio-pika for Tornado to support python 2.7+."
 package_license = "Apache Software License"

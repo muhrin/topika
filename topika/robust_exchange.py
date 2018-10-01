@@ -13,9 +13,17 @@ log = getLogger(__name__)
 class RobustExchange(Exchange):
     """ Exchange abstraction """
 
-    def __init__(self, loop, future_store, channel, publish_method,
-                 name=None, type=ExchangeType.DIRECT, passive=False,
-                 durable=False, auto_delete=False, internal=False,
+    def __init__(self,
+                 loop,
+                 future_store,
+                 channel,
+                 publish_method,
+                 name=None,
+                 type=ExchangeType.DIRECT,
+                 passive=False,
+                 durable=False,
+                 auto_delete=False,
+                 internal=False,
                  arguments=None):
         """
         :type loop: :class:`tornado.ioloop.IOLoop`
@@ -71,8 +79,7 @@ class RobustExchange(Exchange):
         :rtype: :class:`tornado.concurrent.Future`
         """
         result = yield super(RobustExchange, self).bind(
-            exchange, routing_key=routing_key, arguments=arguments, timeout=timeout
-        )
+            exchange, routing_key=routing_key, arguments=arguments, timeout=timeout)
 
         self._bindings[exchange] = dict(routing_key=routing_key, arguments=arguments)
 
