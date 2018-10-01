@@ -29,6 +29,7 @@ AMQP_URL = furl(os.getenv("AMQP_URL", "amqp://guest:guest@127.0.0.1"))
 
 
 class BaseTestCase(AsyncTestCase):
+
     def setUp(self):
         super(BaseTestCase, self).setUp()
         self.loop = self.io_loop

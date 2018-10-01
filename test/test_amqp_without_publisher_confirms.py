@@ -5,6 +5,7 @@ from test.test_amqp import TestCase as AMQPTestCase
 
 
 class TestCase(AMQPTestCase):
+
     @gen.coroutine
     def create_channel(self, connection=None, cleanup=True, publisher_confirms=False, **kwargs):
         if connection is None:
