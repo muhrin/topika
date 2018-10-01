@@ -8,7 +8,7 @@ __contributors__ = "Sebastiaan Huber"
 
 about = {}
 with open('topika/version.py') as f:
-    exec(f.read(), about)
+    exec (f.read(), about)
 
 setup(
     name="topika",
@@ -51,6 +51,7 @@ setup(
         'pika>=1.0.0b1',
         'pyyaml>=3.0, <4.0',
         'shortuuid',
+        'six',
         'furl'
     ],
     extras_require={

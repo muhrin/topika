@@ -3,6 +3,7 @@ import contextlib
 try:
     from typing import Awaitable
 except ImportError:
+    import six
     from future.utils import with_metaclass
     from typing import Generic, TypeVar
     from abc import ABCMeta, abstractmethod
@@ -10,7 +11,8 @@ except ImportError:
     T_co = TypeVar('T_co', covariant=True)
 
 
-    class _Awaitable(with_metaclass(ABCMeta)):
+    @six.add_metaclass(ABCMeta)
+    class _Awaitable(object):
 
         __slots__ = ()
 
