@@ -1,3 +1,5 @@
+from __future__ import absolute_import
+from __future__ import print_function
 from future.standard_library import install_aliases
 
 # Enable urlparse.parse in python2/3
@@ -21,7 +23,7 @@ try:
     os.remove(testfile)
 except OSError:
     pass
-print("Logging test to '{}'".format(testfile))
+print(("Logging test to '{}'".format(testfile)))
 FORMAT = "[%(filename)s:%(lineno)s - %(funcName)s()] %(message)s"
 logging.basicConfig(filename=testfile, level=logging.INFO, format=FORMAT)
 

@@ -1,4 +1,5 @@
 from __future__ import print_function
+from __future__ import absolute_import
 from builtins import bytes
 import os
 from tornado import gen, testing, concurrent
@@ -10,6 +11,7 @@ import shortuuid
 import time
 import unittest
 from unittest import skipIf
+from six.moves import range
 
 try:
     from unittest import mock

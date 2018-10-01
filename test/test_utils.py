@@ -1,5 +1,6 @@
 """Acceptance test utils"""
 
+from __future__ import absolute_import
 import functools
 import logging
 import time

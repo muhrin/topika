@@ -1,3 +1,4 @@
+from __future__ import absolute_import
 from future.standard_library import install_aliases
 
 # Enable urlparse.parse in python2/3

@@ -1,3 +1,4 @@
+from __future__ import absolute_import
 from tornado import gen, testing
 
 from topika import connect_robust

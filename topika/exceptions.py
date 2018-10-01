@@ -1,3 +1,4 @@
+from __future__ import absolute_import
 from pika.exceptions import (ProbableAuthenticationError, AMQPChannelError, AMQPConnectionError, AMQPError,
                              ChannelClosed, ChannelError, AuthenticationError, BodyTooLongError, ConnectionClosed,
                              ConsumerCancelled, DuplicateConsumerTag, IncompatibleProtocolError, InvalidChannelNumber,

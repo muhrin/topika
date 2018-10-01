@@ -1,3 +1,4 @@
+from __future__ import absolute_import
 from functools import wraps
 from logging import getLogger
 from typing import Callable, Generator, Any

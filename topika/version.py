@@ -1,3 +1,5 @@
+from __future__ import absolute_import
+from six.moves import map
 author_info = (('Martin Uhrin', 'martin.uhrin@gmail.com'),)
 
 package_info = "A backport of aio-pika for Tornado to support python 2.7+."
