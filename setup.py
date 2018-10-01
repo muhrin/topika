@@ -46,7 +46,7 @@ setup(
     # of the difference and
     # http://blog.miguelgrinberg.com/post/the-package-dependency-blues
     # for a useful dicussion
-    install_requires=['tornado>=4.0, <6.0', 'future', 'pika>=1.0.0b1', 'pyyaml>=3.0, <4.0', 'shortuuid', 'six', 'furl'],
+    install_requires=['tornado>=4.0, <6.0', 'pika>=1.0.0b1', 'pyyaml>=3.0, <4.0', 'shortuuid', 'six', 'furl'],
     extras_require={
         'dev': ['pytest', 'pytest-cov', 'ipython', 'twine', 'pre-commit'],
         ':python_version<"3.5"': ['typing'],

@@ -10,7 +10,7 @@ import tornado.ioloop
 from tornado import gen, ioloop, locks
 from tornado.concurrent import Future
 from tornado.gen import coroutine, Return
-from urllib.parse import urlparse
+from six.moves.urllib.parse import urlparse
 
 from .channel import Channel
 from . import common
