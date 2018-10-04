@@ -341,7 +341,7 @@ class Queue(BaseChannel):
     #     """ Return the :class:`QueueIterator` which might be used with `async for` syntax
     #     before use it we are strongly recommended call :method:`set_qos` with argument `1`. """
     #     iterator = self.iterator()
-    #     self.loop.create_task(iterator.consume())
+    #     self.loop.add_callback(iterator.consume)
     #     return iterator
     #
     # @asyncio.coroutine
@@ -438,7 +438,7 @@ class Queue(BaseChannel):
 #             f.set_result(None)
 #             return f
 #
-#         return self.loop.create_task(self._close())
+#         return self.loop.add_callback(self._close)
 #
 #     def __del__(self):
 #         self.close()

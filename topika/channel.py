@@ -409,7 +409,7 @@ class Channel(BaseChannel):
 
     def __del__(self):
         with compat.suppress(Exception):
-            self.loop.create_task(self.close())
+            self.loop.add_callback(self.close)
 
 
 __all__ = ('Channel',)
