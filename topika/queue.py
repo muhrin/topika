@@ -2,14 +2,13 @@ from __future__ import absolute_import
 from collections import namedtuple
 import contextlib
 from logging import getLogger
+
 import pika.spec
 from tornado import gen, locks
-from types import FunctionType
-from typing import Any, Generator, Optional
 
-from .exchange import Exchange, ExchangeType_
+from .exchange import Exchange
 from .message import IncomingMessage
-from .common import BaseChannel, FutureStore
+from .common import BaseChannel
 from . import tools
 from .exceptions import QueueEmpty
 
@@ -72,7 +71,7 @@ class Queue(BaseChannel):
 
         LOGGER.debug("Declaring queue: %r", self)
 
-        f = self._create_future(timeout)
+        declare_future = self._create_future(timeout)
 
         self._channel.queue_declare(
             queue=self.name,
@@ -81,7 +80,7 @@ class Queue(BaseChannel):
             exclusive=self.exclusive,
             auto_delete=self.auto_delete,
             arguments=self.arguments,
-            callback=f.set_result)
+            callback=declare_future.set_result)
 
         def on_queue_declared(result):
             res = result.result()
@@ -91,9 +90,9 @@ class Queue(BaseChannel):
                 consumer_count=res.method.consumer_count,
             )
 
-        f.add_done_callback(on_queue_declared)
+        declare_future.add_done_callback(on_queue_declared)
 
-        return f
+        return declare_future
 
     @BaseChannel._ensure_channel_is_open
     def bind(self, exchange, routing_key=None, arguments=None, timeout=None):
@@ -117,16 +116,16 @@ class Queue(BaseChannel):
         LOGGER.debug("Binding queue %r: exchange=%r, routing_key=%r, arguments=%r", self, exchange, routing_key,
                      arguments)
 
-        f = self._create_future(timeout)
+        bind_future = self._create_future(timeout)
 
         self._channel.queue_bind(
             queue=self.name,
             exchange=Exchange._get_exchange_name(exchange),
             routing_key=routing_key,
             arguments=arguments,
-            callback=f.set_result)
+            callback=bind_future.set_result)
 
-        return f
+        return bind_future
 
     @BaseChannel._ensure_channel_is_open
     def unbind(self, exchange, routing_key, arguments=None, timeout=None):
@@ -147,16 +146,16 @@ class Queue(BaseChannel):
         LOGGER.debug("Unbinding queue %r: exchange=%r, routing_key=%r, arguments=%r", self, exchange, routing_key,
                      arguments)
 
-        f = self._create_future(timeout)
+        unbind_future = self._create_future(timeout)
 
         self._channel.queue_unbind(
             queue=self.name,
             exchange=Exchange._get_exchange_name(exchange),
             routing_key=routing_key,
             arguments=arguments,
-            callback=f.set_result)
+            callback=unbind_future.set_result)
 
-        return f
+        return unbind_future
 
     @BaseChannel._ensure_channel_is_open
     @tools.coroutine
@@ -234,10 +233,10 @@ class Queue(BaseChannel):
         :type timeout: int or NoneType
         :return: Basic.CancelOk when operation completed successfully
         """
-        f = self._create_future(timeout)
-        self._channel.basic_cancel(consumer_tag=consumer_tag, callback=f.set_result)
+        cancel_future = self._create_future(timeout)
+        self._channel.basic_cancel(consumer_tag=consumer_tag, callback=cancel_future.set_result)
 
-        return f
+        return cancel_future
 
     @BaseChannel._ensure_channel_is_open
     @gen.coroutine
@@ -313,9 +312,9 @@ class Queue(BaseChannel):
 
         LOGGER.info("Purging queue: %r", self)
 
-        f = self._create_future(timeout)
-        self._channel.queue_purge(queue=self.name, callback=f.set_result)
-        return f
+        purge_future = self._create_future(timeout)
+        self._channel.queue_purge(queue=self.name, callback=purge_future.set_result)
+        return purge_future
 
     @BaseChannel._ensure_channel_is_open
     def delete(self, if_unused=True, if_empty=True, timeout=None):

@@ -114,10 +114,10 @@ class RobustConnection(Connection):
         """
         :type channel: :class:`pika.channel.Channel`
         """
-        ch = self._channels[channel.channel_number]  # type: RobustChannel
-        ch._futures.reject_all(ChannelClosed)
+        pika_channel = self._channels[channel.channel_number]  # type: RobustChannel
+        pika_channel._futures.reject_all(ChannelClosed)
 
-        if ch._closed:
+        if pika_channel._closed:
             self._channels.pop(channel.channel_number)  # type: RobustChannel
 
     def _on_channel_error(self, channel):

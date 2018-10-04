@@ -1,14 +1,13 @@
 from __future__ import absolute_import
 from logging import getLogger
 from tornado import gen
-from typing import Optional
 
 from . import compat
 from .common import FutureStore
 from .exchange import Exchange, ExchangeType
 from .channel import Channel
 
-log = getLogger(__name__)
+_LOGGER = getLogger(__name__)
 
 
 class RobustExchange(Exchange):

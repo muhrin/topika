@@ -1,5 +1,4 @@
 from __future__ import absolute_import
-import contextlib
 import functools
 import pika.exceptions
 import tornado.concurrent
@@ -8,11 +7,11 @@ from tornado import gen, ioloop
 __all__ = 'wait', 'create_future', 'create_task', 'iscoroutinepartial'
 
 
-def iscoroutinepartial(fn):
+def iscoroutinepartial(coro):
     """
     Function returns True if function it's a partial instance of coroutine. See additional information here_.
 
-    :param fn: Function
+    :param coro: Function
     :return: bool
 
     .. _here: https://goo.gl/C0S4sQ
@@ -20,11 +19,11 @@ def iscoroutinepartial(fn):
     """
 
     while True:
-        parent = fn
+        parent = coro
 
-        fn = getattr(parent, 'func', None)
+        coro = getattr(parent, 'func', None)
 
-        if fn is None:
+        if coro is None:
             break
 
     return gen.is_coroutine_function(parent)
@@ -43,7 +42,7 @@ def create_future(loop):
         return tornado.concurrent.Future()
 
 
-def create_task(yielded, loop=None):
+def create_task(yielded, _loop=None):
     """ Helper for `create a new Task`_ with backward compatibility for Python 3.4
 
     .. _create a new Task: https://goo.gl/g4pMV9
@@ -53,12 +52,12 @@ def create_task(yielded, loop=None):
 
 
 @gen.coroutine
-def wait(tasks, loop=None):
+def wait(tasks, _loop=None):
     """
     Simple helper for gathering all passed :class:`Task`s.
 
     :param tasks: list of the :class:`asyncio.Task`s
-    :param loop: Event loop (:func:`tornado.ioloop.IOLoop.current()` when :class:`None`)
+    :param _loop: Event loop (:func:`tornado.ioloop.IOLoop.current()` when :class:`None`)
     :return: :class:`tuple` of results
     """
 
@@ -75,9 +74,9 @@ def ensure_connection_exception(exception_or_message):
     """
     if isinstance(exception_or_message, Exception):
         return exception_or_message
-    else:
-        # We got a string message
-        return pika.exceptions.AMQPConnectionError(exception_or_message)
+
+    # We got a string message
+    return pika.exceptions.AMQPConnectionError(exception_or_message)
 
 
 # Get rid of the stupid default replace_callback in tornado coroutine
