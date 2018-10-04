@@ -3,12 +3,15 @@
   sha: a234ce4e185cf77a55632888f1811d83b4ad9ef2
   hooks:
   - id: python-modernize
-    exclude: ^docs/
+    exclude: >-
+      (?x)^(
+        ^docs/|
+        ^topika/version.py  # this gets loaded in setup.py so we can't introduce six
+      )$
     args:
       - --write
       - --nobackups
 
-# yet another python formatter
 - repo: local
   hooks:
   # yapf = yet another python formatter

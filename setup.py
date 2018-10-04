@@ -48,7 +48,7 @@ setup(
     # for a useful dicussion
     install_requires=['tornado>=4.0, <6.0', 'pika>=1.0.0b1', 'pyyaml>=3.0, <4.0', 'shortuuid', 'six', 'furl'],
     extras_require={
-        'dev': ['pytest', 'pytest-cov', 'ipython', 'twine', 'pre-commit'],
+        'dev': ['pytest', 'pytest-cov', 'ipython', 'twine', 'pre-commit', 'yapf'],
         ':python_version<"3.5"': ['typing'],
         ':python_version<"3.4"': ['enum34', 'singledispatch'],
         ':python_version<"3.3"': ['mock'],
