@@ -1,10 +1,11 @@
+from __future__ import absolute_import
 from tornado import gen, concurrent
 
-from .common import FutureStore
 from .exceptions import TransactionClosed
 
 
 class Transaction:
+
     def __init__(self, channel, future_store):
         """
         :type future_store: :class:`FutureStore`

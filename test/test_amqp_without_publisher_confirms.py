@@ -1,3 +1,4 @@
+from __future__ import absolute_import
 from tornado import gen
 from unittest import skip
 
@@ -5,6 +6,7 @@ from test.test_amqp import TestCase as AMQPTestCase
 
 
 class TestCase(AMQPTestCase):
+
     @gen.coroutine
     def create_channel(self, connection=None, cleanup=True, publisher_confirms=False, **kwargs):
         if connection is None:

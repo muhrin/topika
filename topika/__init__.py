@@ -1,9 +1,5 @@
-from future.standard_library import install_aliases
+from __future__ import absolute_import
 
-# Enable urlparse.parse in python2/3
-install_aliases()
-
-# from . import patterns
 from .connection import Connection, connect
 from .channel import Channel
 from .exchange import Exchange, ExchangeType
@@ -15,27 +11,7 @@ from .compat import ConnectionError, ConnectionRefusedError
 
 from .version import __author__, __version__, author_info, package_info, package_license, version_info
 
-
-__all__ = (
-    '__author__',
-    '__version__',
-    'connect',
-    'connect_robust',
-    'Connection',
-    'Channel',
-    'DeliveryMode',
-    'Exchange',
-    'ExchangeType',
-    'Queue',
-    'Message',
-    'IncomingMessage',
-    'author_info',
-    'package_info',
-    # 'patterns',
-    'version_info',
-    'package_license',
-    'AMQPException',
-    'MessageProcessError',
-    'ConnectionError',
-    'ConnectionRefusedError'
-)
+__all__ = ('__author__', '__version__', 'connect', 'connect_robust', 'Connection', 'Channel', 'DeliveryMode',
+           'Exchange', 'ExchangeType', 'Queue', 'Message', 'IncomingMessage', 'author_info', 'package_info',
+           'version_info', 'package_license', 'AMQPException', 'MessageProcessError', 'ConnectionError',
+           'ConnectionRefusedError')

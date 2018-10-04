@@ -1,3 +1,4 @@
+from __future__ import absolute_import
 from tornado import gen
 from enum import Enum, unique
 from logging import getLogger
@@ -26,14 +27,20 @@ class ExchangeType(Enum):
 class Exchange(BaseChannel):
     """ Exchange abstraction """
 
-    __slots__ = (
-        'name', '__type', '__publish_method', 'arguments', 'durable',
-        'auto_delete', 'internal', 'passive', '_channel'
-    )
+    __slots__ = ('name', '__type', '__publish_method', 'arguments', 'durable', 'auto_delete', 'internal', 'passive',
+                 '_channel')
 
-    def __init__(self, loop, future_store, channel, publish_method,
-                 name=None, type=ExchangeType.DIRECT, passive=False,
-                 durable=False, auto_delete=False, internal=False,
+    def __init__(self,
+                 loop,
+                 future_store,
+                 channel,
+                 publish_method,
+                 name=None,
+                 type=ExchangeType.DIRECT,
+                 passive=False,
+                 durable=False,
+                 auto_delete=False,
+                 internal=False,
                  arguments=None):
         """
         :type loop: :class:`tornado.ioloop.IOLoop`
@@ -66,9 +73,8 @@ class Exchange(BaseChannel):
         return self.name
 
     def __repr__(self):
-        return "<Exchange(%s): auto_delete=%s, durable=%s, arguments=%r)>" % (
-            self, self.auto_delete, self.durable, self.arguments
-        )
+        return "<Exchange(%s): auto_delete=%s, durable=%s, arguments=%r)>" % (self, self.auto_delete, self.durable,
+                                                                              self.arguments)
 
     @BaseChannel._ensure_channel_is_open
     def declare(self, timeout=None):
@@ -85,8 +91,7 @@ class Exchange(BaseChannel):
             auto_delete=self.auto_delete,
             internal=self.internal,
             arguments=self.arguments,
-            callback=future.set_result
-        )
+            callback=future.set_result)
 
         return future
 
@@ -100,12 +105,10 @@ class Exchange(BaseChannel):
         elif isinstance(exchange, str):
             return exchange
         else:
-            raise ValueError(
-                'exchange argument must be an exchange instance or str')
+            raise ValueError('exchange argument must be an exchange instance or str')
 
     @BaseChannel._ensure_channel_is_open
     def bind(self, exchange, routing_key='', arguments=None, timeout=None):
-
         """ A binding can also be a relationship between two exchanges. This can be
         simply read as: this exchange is interested in messages from another exchange.
 
@@ -138,10 +141,8 @@ class Exchange(BaseChannel):
         :rtype: :class:`tornado.concurrent.Future`
         """
 
-        log.debug(
-            "Binding exchange %r to exchange %r, routing_key=%r, arguments=%r",
-            self, exchange, routing_key, arguments
-        )
+        log.debug("Binding exchange %r to exchange %r, routing_key=%r, arguments=%r", self, exchange, routing_key,
+                  arguments)
 
         f = self._create_future(timeout)
 
@@ -170,10 +171,8 @@ class Exchange(BaseChannel):
         :rtype: :class:`tornado.concurrent.Future`
         """
 
-        log.debug(
-            "Unbinding exchange %r from exchange %r, routing_key=%r, arguments=%r",
-            self, exchange, routing_key, arguments
-        )
+        log.debug("Unbinding exchange %r from exchange %r, routing_key=%r, arguments=%r", self, exchange, routing_key,
+                  arguments)
 
         f = self._create_future(timeout)
 
@@ -203,16 +202,13 @@ class Exchange(BaseChannel):
             # Caught on the client side to prevent channel closure
             raise ValueError("cannot publish to internal exchange: '%s'!" % self.name)
 
-        raise gen.Return((
-            yield self.__publish_method(
-                self.name,
-                routing_key,
-                message.body,
-                properties=message.properties,
-                mandatory=mandatory,
-                immediate=immediate
-            )
-        ))
+        raise gen.Return((yield self.__publish_method(
+            self.name,
+            routing_key,
+            message.body,
+            properties=message.properties,
+            mandatory=mandatory,
+            immediate=immediate)))
 
     @BaseChannel._ensure_channel_is_open
     def delete(self, if_unused=False):
@@ -224,11 +220,7 @@ class Exchange(BaseChannel):
         log.info("Deleting %r", self)
         self._futures.reject_all(RuntimeError("Exchange was deleted"))
         future = create_future(loop=self.loop)
-        self._channel.exchange_delete(
-            exchange=self.name,
-            if_unused=if_unused,
-            callback=future.set_result
-        )
+        self._channel.exchange_delete(exchange=self.name, if_unused=if_unused, callback=future.set_result)
         return future
 
 

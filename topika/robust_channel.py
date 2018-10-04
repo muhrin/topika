@@ -1,3 +1,4 @@
+from __future__ import absolute_import
 from logging import getLogger
 from typing import Callable, Any, Generator, Union
 from tornado import gen
@@ -25,9 +26,13 @@ class RobustChannel(Channel):
     QUEUE_CLASS = RobustQueue
     EXCHANGE_CLASS = RobustExchange
 
-    def __init__(self, connection, loop,
-                 future_store, channel_number=None,
-                 publisher_confirms=True, on_return_raises=False):
+    def __init__(self,
+                 connection,
+                 loop,
+                 future_store,
+                 channel_number=None,
+                 publisher_confirms=True,
+                 on_return_raises=False):
         """
 
         :param connection: :class:`pika.TornadoConnection` instance
@@ -75,10 +80,7 @@ class RobustChannel(Channel):
 
         prefetch_count, prefetch_size = self._qos
 
-        yield self.set_qos(
-            prefetch_count=prefetch_count,
-            prefetch_size=prefetch_size
-        )
+        yield self.set_qos(prefetch_count=prefetch_count, prefetch_size=prefetch_size)
 
         raise gen.Return(result)
 
@@ -108,14 +110,25 @@ class RobustChannel(Channel):
             self._channel = None
 
     @gen.coroutine
-    def declare_exchange(self, name, type=exchange.ExchangeType.DIRECT,
-                         durable=None, auto_delete=False,
-                         internal=False, passive=False, arguments=None, timeout=None,
+    def declare_exchange(self,
+                         name,
+                         type=exchange.ExchangeType.DIRECT,
+                         durable=None,
+                         auto_delete=False,
+                         internal=False,
+                         passive=False,
+                         arguments=None,
+                         timeout=None,
                          robust=True):
 
         exchange = yield super(RobustChannel, self).declare_exchange(
-            name=name, type=type, durable=durable, auto_delete=auto_delete,
-            internal=internal, passive=passive, arguments=arguments,
+            name=name,
+            type=type,
+            durable=durable,
+            auto_delete=auto_delete,
+            internal=internal,
+            passive=passive,
+            arguments=arguments,
             timeout=timeout,
         )
 
@@ -127,17 +140,22 @@ class RobustChannel(Channel):
     @gen.coroutine
     def exchange_delete(self, exchange_name, timeout=None, if_unused=False):
         result = yield super(RobustChannel, self).exchange_delete(
-            exchange_name=exchange_name, timeout=timeout,
-            if_unused=if_unused
-        )
+            exchange_name=exchange_name, timeout=timeout, if_unused=if_unused)
 
         self._exchanges.pop(exchange_name, None)
 
         raise gen.Return(result)
 
     @gen.coroutine
-    def declare_queue(self, name=None, durable=None, exclusive=False, passive=False,
-                      auto_delete=False, arguments=None, timeout=None, robust=True):
+    def declare_queue(self,
+                      name=None,
+                      durable=None,
+                      exclusive=False,
+                      passive=False,
+                      auto_delete=False,
+                      arguments=None,
+                      timeout=None,
+                      robust=True):
         """
         :param name: queue name
         :type name: str
@@ -160,9 +178,13 @@ class RobustChannel(Channel):
         """
 
         queue = yield super(RobustChannel, self).declare_queue(
-            name=name, durable=durable, exclusive=exclusive,
-            passive=passive, auto_delete=auto_delete,
-            arguments=arguments, timeout=timeout,
+            name=name,
+            durable=durable,
+            exclusive=exclusive,
+            passive=passive,
+            auto_delete=auto_delete,
+            arguments=arguments,
+            timeout=timeout,
         )
 
         if robust:
@@ -171,12 +193,9 @@ class RobustChannel(Channel):
         raise gen.Return(queue)
 
     @gen.coroutine
-    def queue_delete(self, queue_name, timeout=None,
-                     if_unused=False, if_empty=False):
+    def queue_delete(self, queue_name, timeout=None, if_unused=False, if_empty=False):
         result = yield super(RobustChannel, self).queue_delete(
-            queue_name=queue_name, timeout=timeout,
-            if_unused=if_unused, if_empty=if_empty
-        )
+            queue_name=queue_name, timeout=timeout, if_unused=if_unused, if_empty=if_empty)
 
         self._queues.pop(queue_name, None)
         raise gen.Return(result)

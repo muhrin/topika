@@ -1,15 +1,14 @@
+from __future__ import absolute_import
 from collections import namedtuple
 from logging import getLogger
 from tornado import gen
 from types import FunctionType
-from typing import Any, Generator
 
 import shortuuid
 
 from . import compat
-from .common import FutureStore
 from .channel import Channel
-from .queue import ExchangeType_, Queue, ConsumerTag
+from .queue import Queue
 from . import tools
 
 log = getLogger(__name__)
@@ -18,8 +17,8 @@ DeclarationResult = namedtuple('DeclarationResult', ('message_count', 'consumer_
 
 
 class RobustQueue(Queue):
-    def __init__(self, loop, future_store, channel,
-                 name, durable, exclusive, auto_delete, arguments):
+
+    def __init__(self, loop, future_store, channel, name, durable, exclusive, auto_delete, arguments):
         """
         :type loop: :class:`tornado.ioloop.IOLoop`
         :type future_store: :class:`topika.FutureStore`
@@ -31,8 +30,8 @@ class RobustQueue(Queue):
         :type arguments: dict
         """
 
-        super(RobustQueue, self).__init__(loop, future_store, channel, name or "amq_%s" % shortuuid.uuid(),
-                                          durable, exclusive, auto_delete, arguments)
+        super(RobustQueue, self).__init__(loop, future_store, channel, name or "amq_%s" % shortuuid.uuid(), durable,
+                                          exclusive, auto_delete, arguments)
 
         self._consumers = {}
         self._bindings = {}
@@ -56,7 +55,6 @@ class RobustQueue(Queue):
 
     @gen.coroutine
     def bind(self, exchange, routing_key=None, arguments=None, timeout=None):
-
         """ A binding is a relationship between an exchange and a queue. This can be
         simply read as: the queue is interested in messages from this exchange.
 
@@ -64,7 +62,7 @@ class RobustQueue(Queue):
         with a basic_publish parameter we're going to call it a binding key.
 
         :param exchange: :class:`topika.exchange.Exchange` instance
-        :type exchange: :class:`ExchangeType`
+        :type exchange: :class:`ExchangeType_`
         :param routing_key: routing key
         :type routing_key: str
         :param arguments: additional arguments (will be passed to `pika`)
@@ -76,11 +74,7 @@ class RobustQueue(Queue):
         """
         kwargs = dict(arguments=arguments, timeout=timeout)
 
-        result = yield super(RobustQueue, self).bind(
-            exchange=exchange,
-            routing_key=routing_key,
-            **kwargs
-        )
+        result = yield super(RobustQueue, self).bind(exchange=exchange, routing_key=routing_key, **kwargs)
 
         self._bindings[(exchange, routing_key)] = kwargs
 
@@ -88,15 +82,22 @@ class RobustQueue(Queue):
 
     @gen.coroutine
     def unbind(self, exchange, routing_key, arguments=None, timeout=None):
+        """
+        :param exchange:  The exchange to unbind
+        :type exchange: :class:`ExchangeType_`
+        :param routing_key: The routing key
+        :type routing_key: str
+        :param arguments:
+        :param timeout:
+        :return:
+        """
         result = yield super(RobustQueue, self).unbind(exchange, routing_key, arguments, timeout)
         self._bindings.pop((exchange, routing_key), None)
 
         raise gen.Return(result)
 
     @tools.coroutine
-    def consume(self, callback, no_ack=False,
-                exclusive=False, arguments=None,
-                consumer_tag=None, timeout=None):
+    def consume(self, callback, no_ack=False, exclusive=False, arguments=None, consumer_tag=None, timeout=None):
         """ Start to consuming the :class:`Queue`.
 
         :param callback: Consuming callback. Could be a coroutine.
@@ -116,15 +117,9 @@ class RobustQueue(Queue):
         :raises tornado.gen.TimeoutError: when the consuming timeout period has elapsed.
         :rtype: class:`Generator[Any, None, ConsumerTag]`
         """
-        kwargs = dict(
-            callback=callback,
-            no_ack=no_ack,
-            exclusive=exclusive,
-            arguments=arguments
-        )
+        kwargs = dict(callback=callback, no_ack=no_ack, exclusive=exclusive, arguments=arguments)
 
-        consumer_tag = yield super(RobustQueue, self).consume(
-            consumer_tag=consumer_tag, **kwargs)
+        consumer_tag = yield super(RobustQueue, self).consume(consumer_tag=consumer_tag, **kwargs)
 
         self._consumers[consumer_tag] = kwargs
 

@@ -1,3 +1,4 @@
+from __future__ import absolute_import
 from functools import wraps
 from logging import getLogger
 from typing import Callable, Generator, Any
@@ -14,6 +15,7 @@ log = getLogger(__name__)
 
 
 def _ensure_connection(func):
+
     @wraps(func)
     def wrap(self, *args, **kwargs):
         if self.is_closed:
@@ -30,9 +32,14 @@ class RobustConnection(Connection):
     DEFAULT_RECONNECT_INTERVAL = 1
     CHANNEL_CLASS = RobustChannel
 
-    def __init__(self, host='localhost', port=5672, login='guest',
-                 password='guest', virtual_host='/',
-                 loop=None, **kwargs):
+    def __init__(self,
+                 host='localhost',
+                 port=5672,
+                 login='guest',
+                 password='guest',
+                 virtual_host='/',
+                 loop=None,
+                 **kwargs):
         """
         :type host: str
         :type port: int
@@ -43,12 +50,10 @@ class RobustConnection(Connection):
         :type kwargs: dict
         """
 
-        self.reconnect_interval = kwargs.pop('reconnect_interval',
-                                             self.DEFAULT_RECONNECT_INTERVAL)
+        self.reconnect_interval = kwargs.pop('reconnect_interval', self.DEFAULT_RECONNECT_INTERVAL)
 
         super(RobustConnection, self).__init__(
-            host=host, port=port, login=login, password=password,
-            virtual_host=virtual_host, loop=loop, **kwargs)
+            host=host, port=port, login=login, password=password, virtual_host=virtual_host, loop=loop, **kwargs)
 
         self._closed = False
         self._on_connection_lost_callbacks = []
@@ -103,19 +108,16 @@ class RobustConnection(Connection):
         if not future.done():
             future.set_result(None)
 
-        self.loop.call_later(
-            self.reconnect_interval,
-            lambda: self.loop.create_task(self.connect())
-        )
+        self.loop.call_later(self.reconnect_interval, self.connect)
 
     def _channel_cleanup(self, channel):
         """
         :type channel: :class:`pika.channel.Channel`
         """
-        ch = self._channels[channel.channel_number]  # type: RobustChannel
-        ch._futures.reject_all(ChannelClosed)
+        pika_channel = self._channels[channel.channel_number]  # type: RobustChannel
+        pika_channel._futures.reject_all(ChannelClosed)
 
-        if ch._closed:
+        if pika_channel._closed:
             self._channels.pop(channel.channel_number)  # type: RobustChannel
 
     def _on_channel_error(self, channel):
@@ -174,11 +176,16 @@ class RobustConnection(Connection):
 
 
 @gen.coroutine
-def connect_robust(url=None, host='localhost',
-                   port=5672, login='guest',
-                   password='guest', virtualhost='/',
-                   loop=None, ssl_options=None,
-                   connection_class=RobustConnection, **kwargs):
+def connect_robust(url=None,
+                   host='localhost',
+                   port=5672,
+                   login='guest',
+                   password='guest',
+                   virtualhost='/',
+                   loop=None,
+                   ssl_options=None,
+                   connection_class=RobustConnection,
+                   **kwargs):
     """ Make robust connection to the broker.
 
     That means that connection state will be restored after reconnect.
@@ -250,14 +257,17 @@ def connect_robust(url=None, host='localhost',
     .. _pika documentation: https://goo.gl/TdVuZ9
 
     """
-    raise gen.Return((
-        yield connect(
-            url=url, host=host, port=port, login=login,
-            password=password, virtualhost=virtualhost,
-            loop=loop, connection_class=connection_class,
-            ssl_options=ssl_options, **kwargs
-        )
-    ))
+    raise gen.Return((yield connect(
+        url=url,
+        host=host,
+        port=port,
+        login=login,
+        password=password,
+        virtualhost=virtualhost,
+        loop=loop,
+        connection_class=connection_class,
+        ssl_options=ssl_options,
+        **kwargs)))
 
 
 __all__ = 'RobustConnection', 'connect_robust',

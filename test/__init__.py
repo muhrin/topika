@@ -1,7 +1,5 @@
-from future.standard_library import install_aliases
-
-# Enable urlparse.parse in python2/3
-install_aliases()
+from __future__ import absolute_import
+from __future__ import print_function
 
 import functools
 import logging
@@ -21,7 +19,6 @@ try:
     os.remove(testfile)
 except OSError:
     pass
-print("Logging test to '{}'".format(testfile))
 FORMAT = "[%(filename)s:%(lineno)s - %(funcName)s()] %(message)s"
 logging.basicConfig(filename=testfile, level=logging.INFO, format=FORMAT)
 
@@ -29,6 +26,7 @@ AMQP_URL = furl(os.getenv("AMQP_URL", "amqp://guest:guest@127.0.0.1"))
 
 
 class BaseTestCase(AsyncTestCase):
+
     def setUp(self):
         super(BaseTestCase, self).setUp()
         self.loop = self.io_loop

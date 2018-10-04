@@ -1,3 +1,4 @@
+from __future__ import absolute_import
 import contextlib
 import enum
 import tornado.ioloop
@@ -19,6 +20,7 @@ def ensure_coroutine(func_or_coro):
     if gen.is_coroutine_function(func_or_coro):
         return func_or_coro
     else:
+
         @coroutine
         def coro(*args, **kwargs):
             raise Return(func_or_coro(*args, **kwargs))
@@ -162,6 +164,7 @@ class BaseChannel(object):
 
     @staticmethod
     def _ensure_channel_is_open(func):
+
         @contextlib.wraps(func)
         @tools.coroutine
         def wrap(self, *args, **kwargs):

@@ -1,3 +1,4 @@
+from __future__ import absolute_import
 from tornado import gen, testing
 
 from topika import connect_robust
@@ -6,6 +7,7 @@ from test.test_amqp import TestCase as AMQPTestCase
 
 
 class TestCase(AMQPTestCase):
+
     @gen.coroutine
     def create_connection(self, cleanup=True):
         client = yield connect_robust(AMQP_URL, loop=self.loop)

@@ -67,3 +67,6 @@ target/
 
 # Virtual environment directories
 /venv*/
+
+# Testing cache
+.pytest_cache/
