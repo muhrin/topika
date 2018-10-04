@@ -311,7 +311,7 @@ class Channel(BaseChannel):
         :type arguments: Optional[dict]
         :param timeout: execution timeout
         :type timeout: int
-        :rtype: :class:`Generator[Any, None, Queue]`
+        :rtype: :class:`topika.Queue`
         """
 
         with (yield self._write_lock.acquire()):
@@ -406,10 +406,6 @@ class Channel(BaseChannel):
         tx.closing.add_done_callback(lambda _: self.remove_close_callback(tx.on_close_callback))
 
         return tx
-
-    def __del__(self):
-        with compat.suppress(Exception):
-            self.loop.add_callback(self.close)
 
 
 __all__ = ('Channel',)
