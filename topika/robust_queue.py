@@ -3,14 +3,12 @@ from collections import namedtuple
 from logging import getLogger
 from tornado import gen
 from types import FunctionType
-from typing import Any, Generator
 
 import shortuuid
 
 from . import compat
-from .common import FutureStore
 from .channel import Channel
-from .queue import ExchangeType_, Queue, ConsumerTag
+from .queue import Queue
 from . import tools
 
 log = getLogger(__name__)
@@ -64,7 +62,7 @@ class RobustQueue(Queue):
         with a basic_publish parameter we're going to call it a binding key.
 
         :param exchange: :class:`topika.exchange.Exchange` instance
-        :type exchange: :class:`ExchangeType`
+        :type exchange: :class:`ExchangeType_`
         :param routing_key: routing key
         :type routing_key: str
         :param arguments: additional arguments (will be passed to `pika`)
@@ -84,6 +82,15 @@ class RobustQueue(Queue):
 
     @gen.coroutine
     def unbind(self, exchange, routing_key, arguments=None, timeout=None):
+        """
+        :param exchange:  The exchange to unbind
+        :type exchange: :class:`ExchangeType_`
+        :param routing_key: The routing key
+        :type routing_key: str
+        :param arguments:
+        :param timeout:
+        :return:
+        """
         result = yield super(RobustQueue, self).unbind(exchange, routing_key, arguments, timeout)
         self._bindings.pop((exchange, routing_key), None)
 

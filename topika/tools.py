@@ -2,7 +2,7 @@ from __future__ import absolute_import
 import functools
 import pika.exceptions
 import tornado.concurrent
-from tornado import gen, ioloop
+from tornado import gen
 
 __all__ = 'wait', 'create_future', 'create_task', 'iscoroutinepartial'
 
@@ -42,7 +42,7 @@ def create_future(loop):
         return tornado.concurrent.Future()
 
 
-def create_task(yielded, _loop=None):
+def create_task(yielded, loop=None):
     """ Helper for `create a new Task`_ with backward compatibility for Python 3.4
 
     .. _create a new Task: https://goo.gl/g4pMV9
@@ -52,7 +52,7 @@ def create_task(yielded, _loop=None):
 
 
 @gen.coroutine
-def wait(tasks, _loop=None):
+def wait(tasks):
     """
     Simple helper for gathering all passed :class:`Task`s.
 
@@ -60,7 +60,6 @@ def wait(tasks, _loop=None):
     :param _loop: Event loop (:func:`tornado.ioloop.IOLoop.current()` when :class:`None`)
     :return: :class:`tuple` of results
     """
-
     raise gen.Return((yield gen.multi(tasks)))
 
 

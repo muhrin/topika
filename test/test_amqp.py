@@ -466,7 +466,7 @@ class TestCase(BaseTestCase):
 
         yield queue.unbind(exchange, routing_key)
         yield queue.delete()
-        yield wait((client.close(), client.closing), loop=self.loop)
+        yield wait((client.close(), client.closing))
 
     @testing.gen_test
     def test_ack_twice(self):
@@ -494,7 +494,7 @@ class TestCase(BaseTestCase):
         self.assertEqual(incoming_message.body, body)
         yield queue.unbind(exchange, routing_key)
         yield queue.delete()
-        yield wait((client.close(), client.closing), loop=self.loop)
+        yield wait((client.close(), client.closing))
 
     @testing.gen_test
     def test_reject_twice(self):
@@ -522,7 +522,7 @@ class TestCase(BaseTestCase):
         self.assertEqual(incoming_message.body, body)
         yield queue.unbind(exchange, routing_key)
         yield queue.delete()
-        yield wait((client.close(), client.closing), loop=self.loop)
+        yield wait((client.close(), client.closing))
 
     @testing.gen_test
     def test_consuming(self):
@@ -539,25 +539,25 @@ class TestCase(BaseTestCase):
 
         body = bytes(shortuuid.uuid(), 'utf-8')
 
-        f = concurrent.Future()
+        message_future = concurrent.Future()
 
         @gen.coroutine
         def handle(message):
             message.ack()
             self.assertEqual(message.body, body)
             self.assertEqual(message.routing_key, routing_key)
-            f.set_result(True)
+            message_future.set_result(True)
 
         yield queue.consume(handle)
 
         yield exchange.publish(Message(body, content_type='text/plain', headers={'foo': 'bar'}), routing_key)
 
-        if not f.done():
-            yield f
+        if not message_future.done():
+            yield message_future
 
         yield queue.unbind(exchange, routing_key)
         yield exchange.delete()
-        yield wait((client.close(), client.closing), loop=self.loop)
+        yield wait((client.close(), client.closing))
 
     @testing.gen_test
     def test_consuming_not_coroutine(self):
@@ -591,7 +591,7 @@ class TestCase(BaseTestCase):
 
         yield queue.unbind(exchange, routing_key)
         yield exchange.delete()
-        yield wait((client.close(), client.closing), loop=self.loop)
+        yield wait((client.close(), client.closing))
 
     @testing.gen_test
     def test_ack_reject(self):
@@ -632,7 +632,7 @@ class TestCase(BaseTestCase):
 
         yield queue.unbind(exchange, routing_key)
         yield queue.delete()
-        yield wait((client.close(), client.closing), loop=self.loop)
+        yield wait((client.close(), client.closing))
 
     @testing.gen_test
     def test_purge_queue(self):
@@ -661,7 +661,7 @@ class TestCase(BaseTestCase):
     @testing.gen_test
     def test_connection_refused(self):
         with self.assertRaises(topika.exceptions.AMQPConnectionError):
-            yield connect('amqp://guest:guest@localhost:9999', loop=self.loop)
+            yield connect('amqp://guest:guest@localhost:9999')
 
     @testing.gen_test
     def test_wrong_credentials(self):
@@ -670,7 +670,7 @@ class TestCase(BaseTestCase):
         amqp_url.password = uuid.uuid4().hex
 
         with self.assertRaises(pika.exceptions.ConnectionClosedByBroker):
-            yield connect(amqp_url, loop=self.loop)
+            yield connect(amqp_url)
 
     @testing.gen_test
     def test_set_qos(self):
@@ -759,7 +759,7 @@ class TestCase(BaseTestCase):
             exchange = yield channel.declare_exchange('direct', auto_delete=True)
         finally:
             yield exchange.delete()
-            yield wait((client.close(), client.closing), loop=self.loop)
+            yield wait((client.close(), client.closing))
 
     @testing.gen_test
     def test_basic_return(self):
@@ -804,7 +804,7 @@ class TestCase(BaseTestCase):
 
         self.assertEqual(returned.body, body)
 
-        yield wait((client.close(), client.closing), loop=self.loop)
+        yield wait((client.close(), client.closing))
 
     @testing.gen_test
     def test_expiration(self):
@@ -840,7 +840,7 @@ class TestCase(BaseTestCase):
         self.assertEqual(message.body, body)
         self.assertEqual(message.headers['x-death'][0]['original-expiration'], '500')
 
-        yield wait((client.close(), client.closing), loop=self.loop)
+        yield wait((client.close(), client.closing))
 
     @testing.gen_test
     def test_add_close_callback(self):
@@ -879,7 +879,7 @@ class TestCase(BaseTestCase):
         self.assertEqual(incoming_message.body, body)
         yield queue.unbind(exchange, routing_key)
         yield queue.delete()
-        yield wait((client.close(), client.closing), loop=self.loop)
+        yield wait((client.close(), client.closing))
 
     @testing.gen_test
     def test_unexpected_channel_close(self):
@@ -890,7 +890,7 @@ class TestCase(BaseTestCase):
         with self.assertRaises(ChannelClosed):
             yield channel.declare_queue("amq.restricted_queue_name", auto_delete=True)
 
-        yield wait((client.close(), client.closing), loop=self.loop)
+        yield wait((client.close(), client.closing))
 
     @testing.gen_test
     def test_declaration_result(self):
@@ -903,7 +903,7 @@ class TestCase(BaseTestCase):
         self.assertEqual(queue.declaration_result.message_count, 0)
         self.assertEqual(queue.declaration_result.consumer_count, 0)
 
-        yield wait((client.close(), client.closing), loop=self.loop)
+        yield wait((client.close(), client.closing))
 
     @testing.gen_test
     def test_declaration_result_with_consumers(self):
@@ -921,7 +921,7 @@ class TestCase(BaseTestCase):
 
         self.assertEqual(queue2.declaration_result.consumer_count, 1)
 
-        yield wait((client.close(), client.closing), loop=self.loop)
+        yield wait((client.close(), client.closing))
 
     @testing.gen_test
     def test_declaration_result_with_messages(self):
@@ -942,7 +942,7 @@ class TestCase(BaseTestCase):
         self.assertEqual(queue2.declaration_result.consumer_count, 0)
         self.assertEqual(queue2.declaration_result.message_count, 1)
 
-        yield wait((client.close(), client.closing), loop=self.loop)
+        yield wait((client.close(), client.closing))
 
     @testing.gen_test
     def test_queue_empty_exception(self):
@@ -968,7 +968,7 @@ class TestCase(BaseTestCase):
             yield queue.get(timeout=5)
 
         yield queue.delete()
-        yield wait((client.close(), client.closing), loop=self.loop)
+        yield wait((client.close(), client.closing))
 
     @testing.gen_test
     def test_queue_empty_fail_false(self):
@@ -982,7 +982,7 @@ class TestCase(BaseTestCase):
         self.assertIsNone(result)
 
         yield queue.delete()
-        yield wait((client.close(), client.closing), loop=self.loop)
+        yield wait((client.close(), client.closing))
 
     @testing.gen_test
     def test_message_nack(self):
@@ -1007,7 +1007,7 @@ class TestCase(BaseTestCase):
         message.ack()
 
         yield queue.delete()
-        yield wait((client.close(), client.closing), loop=self.loop)
+        yield wait((client.close(), client.closing))
 
     @testing.gen_test
     def test_on_return_raises(self):
