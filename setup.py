@@ -40,10 +40,8 @@ setup(
         'Programming Language :: Python :: Implementation :: CPython',
     ],
     keywords='communication messaging rpc broadcast',
-    # Abstract dependencies.  Concrete versions are listed in
-    # requirements.txt
-    # See https://caremad.io/2013/07/setup-vs-requirement/ for an explanation
-    # of the difference and
+    # Abstract dependencies.
+    # See https://caremad.io/2013/07/setup-vs-requirement/ for an explanation and
     # http://blog.miguelgrinberg.com/post/the-package-dependency-blues
     # for a useful dicussion
     install_requires=['tornado>=4.0, <6.0', 'pika>=1.0.0b1', 'pyyaml>=3.0, <4.0', 'shortuuid', 'six', 'furl'],
