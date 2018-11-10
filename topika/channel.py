@@ -129,7 +129,7 @@ class Channel(BaseChannel):
         msg = message.ReturnedMessage(channel=channel, body=body, envelope=method, properties=properties)
 
         for callback in self._on_return_callbacks:
-            tools.create_task(callback(msg), loop=self.loop)
+            tools.create_task(callback(msg))
 
     def add_close_callback(self, callback):
         """
@@ -282,7 +282,8 @@ class Channel(BaseChannel):
                 else:
                     publish_future.set_result(None)
 
-            raise gen.Return((yield publish_future))
+            result = yield publish_future
+            raise gen.Return(result)
 
     @BaseChannel._ensure_channel_is_open
     @gen.coroutine

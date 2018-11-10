@@ -197,7 +197,7 @@ class Queue(BaseChannel):
             )
 
             if tools.iscoroutinepartial(callback):
-                tools.create_task(callback(message), loop=self.loop)
+                tools.create_task(callback(message))
             else:
                 self.loop.add_callback(callback, message)
 
