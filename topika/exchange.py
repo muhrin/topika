@@ -188,7 +188,7 @@ class Exchange(BaseChannel):
 
     @BaseChannel._ensure_channel_is_open
     @gen.coroutine
-    def publish(self, message, routing_key, mandatory=True, immediate=False):
+    def publish(self, message, routing_key, mandatory=True):
         """ Publish the message to the queue. `topika` use `publisher confirms`_
         extension for message delivery.
 
@@ -207,8 +207,7 @@ class Exchange(BaseChannel):
             routing_key,
             message.body,
             properties=message.properties,
-            mandatory=mandatory,
-            immediate=immediate)))
+            mandatory=mandatory)))
 
     @BaseChannel._ensure_channel_is_open
     def delete(self, if_unused=False):

@@ -5,6 +5,7 @@ import pika
 from pika import ConnectionParameters
 from pika.credentials import ExternalCredentials, PlainCredentials
 from pika.spec import REPLY_SUCCESS
+from pika.adapters.tornado_connection import TornadoConnection
 import pika.exceptions
 import tornado.ioloop
 from tornado import gen, ioloop, locks
@@ -156,7 +157,7 @@ class Connection(object):
         .. note::
             This method is called by :func:`connect`. You shouldn't call it explicitly.
 
-        :rtype: :class:`pika.TornadoConnection`
+        :rtype: :class:`pika.adapters.tornado_connection.TornadoConnection`
         """
 
         if self.__closing and self.__closing.done():
@@ -169,7 +170,7 @@ class Connection(object):
 
             connect_future = tools.create_future(loop=self.loop)
 
-            connection = pika.TornadoConnection(
+            connection = TornadoConnection(
                 parameters=self.__connection_parameters,
                 custom_ioloop=self.loop,
                 on_open_callback=connect_future.set_result,
@@ -285,7 +286,7 @@ class Connection(object):
     def _on_connection_refused(self, future, connection, reason):
         """
         :type future: :class:`tornado.concurrent.Future`
-        :type connection: :class:`pika.TornadoConnection`
+        :type connection: :class:`pika.adapters.tornado_connection.TornadoConnection`
         :type reason: Exception
         """
         self._on_connection_lost(future, connection, reason)
@@ -293,7 +294,7 @@ class Connection(object):
     def _on_connection_lost(self, future, connection, reason):
         """
         :type future: :class:`tornado.concurrent.Future`
-        :type connection: :class:`pika.TornadoConnection`
+        :type connection: :class:`pika.adapters.tornado_connection.TornadoConnection`
         :type reason: Exception
         """
         if self.__closing and self.__closing.done():
