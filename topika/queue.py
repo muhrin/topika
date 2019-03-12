@@ -166,14 +166,14 @@ class Queue(BaseChannel):
                         Future was not finished after this time.
         :param callback: Consuming callback. Could be a coroutine.
         :type callback: :class:`FunctionType`
-        :param no_ack: if :class:`True` you don't need to call :func:`aio_pika.message.IncomingMessage.ack`
+        :param no_ack: if :class:`True` you don't need to call :func:`topika.message.IncomingMessage.ack`
         :type no_ack: bool
         :param exclusive: Makes this queue exclusive. Exclusive queues may only be accessed by the current
                           connection, and are deleted when that connection closes. Passive declaration of an
                           exclusive queue by other connections are not allowed.
         :type exclusive: bool
         :param arguments: extended arguments for pika
-        :type arguments: Optiona[dict]
+        :type arguments: Optional[dict]
         :param consumer_tag: optional consumer tag
 
         :raises tornado.gen.TimeoutError: when the consuming timeout period has elapsed.

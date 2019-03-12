@@ -1,24 +1,21 @@
 from __future__ import absolute_import
 from collections import namedtuple
-from logging import getLogger
-from tornado import gen
-from types import FunctionType
 
+from tornado import gen
 import shortuuid
 
 from . import compat
-from .channel import Channel
 from .queue import Queue
 from . import tools
-
-log = getLogger(__name__)
 
 DeclarationResult = namedtuple('DeclarationResult', ('message_count', 'consumer_count'))
 
 
 class RobustQueue(Queue):
+    """A queue that, if the connection drops, will recreate itself once it's back up"""
 
     def __init__(self, loop, future_store, channel, name, durable, exclusive, auto_delete, arguments):
+        # pylint: disable=too-many-arguments
         """
         :type loop: :class:`tornado.ioloop.IOLoop`
         :type future_store: :class:`topika.FutureStore`
@@ -39,10 +36,10 @@ class RobustQueue(Queue):
     @gen.coroutine
     def on_reconnect(self, channel):
         """
-        :type channel: :class:`Channel`
+        :type channel: :class:`topika.Channel`
         """
         self._futures.reject_all(compat.ConnectionError("Auto Reconnect Error"))
-        self._channel = channel._channel
+        self._channel = channel._channel  # pylint: disable=protected-access
 
         yield self.declare()
 
@@ -98,10 +95,11 @@ class RobustQueue(Queue):
 
     @tools.coroutine
     def consume(self, callback, no_ack=False, exclusive=False, arguments=None, consumer_tag=None, timeout=None):
+        # pylint: disable=too-many-arguments
         """ Start to consuming the :class:`Queue`.
 
         :param callback: Consuming callback. Could be a coroutine.
-        :type callback: :class:`FunctionType`
+        :type callback: :class:`types.FunctionType`
         :param no_ack: if :class:`True` you don't need to call :func:`topika.message.IncomingMessage.ack`
         :type no_ack: bool
         :param exclusive: Makes this queue exclusive. Exclusive queues may only be accessed by the current
@@ -132,4 +130,4 @@ class RobustQueue(Queue):
         raise gen.Return(result)
 
 
-__all__ = 'RobustQueue',
+__all__ = ('RobustQueue',)
