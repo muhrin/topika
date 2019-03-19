@@ -2,8 +2,7 @@ from __future__ import absolute_import
 from pika.exceptions import (ProbableAuthenticationError, AMQPChannelError, AMQPConnectionError, AMQPError,
                              ChannelClosed, ChannelError, AuthenticationError, BodyTooLongError, ConnectionClosed,
                              ConsumerCancelled, DuplicateConsumerTag, IncompatibleProtocolError, InvalidChannelNumber,
-                             InvalidFieldTypeException, InvalidFrameError, InvalidMaximumFrameSize,
-                             InvalidMinimumFrameSize, MethodNotImplemented, NackError, NoFreeChannels,
+                             InvalidFieldTypeException, InvalidFrameError, MethodNotImplemented, NackError, NoFreeChannels,
                              ProbableAccessDeniedError, ProtocolSyntaxError, ProtocolVersionMismatch,
                              ShortStringTooLong, UnexpectedFrameError, UnroutableError, UnsupportedAMQPFieldException)
 
@@ -40,8 +39,6 @@ __all__ = (
     'InvalidChannelNumber',
     'InvalidFieldTypeException',
     'InvalidFrameError',
-    'InvalidMaximumFrameSize',
-    'InvalidMinimumFrameSize',
     'MessageProcessError',
     'MethodNotImplemented',
     'NackError',

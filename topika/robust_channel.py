@@ -35,7 +35,7 @@ class RobustChannel(Channel):
                  on_return_raises=False):
         """
 
-        :param connection: :class:`pika.TornadoConnection` instance
+        :param connection: :class:`pika.adapters.tornado_connection.TornadoConnection` instance
         :param loop: Event loop (:func:`tornado.ioloop.IOLoop.current()` when :class:`None`)
         :param future_store: :class:`topika.common.FutureStore` instance
         :param publisher_confirms: False if you don't need delivery confirmations (in pursuit of performance)
@@ -85,8 +85,8 @@ class RobustChannel(Channel):
         raise gen.Return(result)
 
     @gen.coroutine
-    def set_qos(self, prefetch_count=0, prefetch_size=0, all_channels=False, timeout=None):
-        if all_channels:
+    def set_qos(self, prefetch_count=0, prefetch_size=0, global_qos=False, timeout=None):
+        if global_qos:
             raise NotImplementedError("Not available to RobustConnection")
 
         self._qos = prefetch_count, prefetch_size

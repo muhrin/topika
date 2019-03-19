@@ -675,7 +675,7 @@ class TestCase(BaseTestCase):
     @testing.gen_test
     def test_set_qos(self):
         channel = yield self.create_channel()
-        yield channel.set_qos(prefetch_count=1, all_channels=True)
+        yield channel.set_qos(prefetch_count=1, global_qos=True)
 
     @testing.gen_test
     def test_exchange_delete(self):
