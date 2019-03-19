@@ -90,7 +90,7 @@ class RobustConnection(Connection):
     def _on_connection_lost(self, future, connection, reason):
         """
         :type future: :class:`tornado.concurrent.Future`
-        :type connection: :class:`pika.TornadoConnection`
+        :type connection: :class:`pika.adapters.tornado_connection.TornadoConnection`
         :type reason: Exception
         """
         for callback in self._on_connection_lost_callbacks:

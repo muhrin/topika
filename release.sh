@@ -1,12 +1,17 @@
 
-
+if [ "$#" -ne 2 ]; then
+    echo "Expected: release.sh <version number> <remote>"
+    exit 1
+fi
 
 PACKAGE="topika"
 VERSION_FILE=${PACKAGE}/version.py
 
 version=$1
+upstream=$2
+
 while true; do
-    read -p "Release version ${version}? " yn
+    read -p "Release version ${version} using remote $upstream? " yn
     case $yn in
         [Yy]* ) break;;
         [Nn]* ) exit;;
@@ -44,8 +49,8 @@ git branch -d $relbranch
 
 # Push everything
 
-git push origin master
-git push origin $tag
+git push $upstream master
+git push $upstream $tag
 
 
 # Release on pypi

@@ -42,7 +42,7 @@ def create_future(loop):
         return tornado.concurrent.Future()
 
 
-def create_task(yielded, loop=None):
+def create_task(yielded):
     """ Helper for `create a new Task`_ with backward compatibility for Python 3.4
 
     .. _create a new Task: https://goo.gl/g4pMV9

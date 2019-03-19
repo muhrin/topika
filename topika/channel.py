@@ -43,7 +43,7 @@ class Channel(BaseChannel):
         Create a new instance of the Channel.  Don't call this directly, this should
         be constructed by the connection.
 
-        :type connection: :class:`pika.TornadoConnection`
+        :type connection: :class:`pika.adapters.tornado_connection.TornadoConnection`
         :type loop: :class:`tornado.ioloop.IOLoop`
         :param future_store: The future store to use
         :type future_store: :class:`topika.common.FutureStore`
@@ -129,7 +129,7 @@ class Channel(BaseChannel):
         msg = message.ReturnedMessage(channel=channel, body=body, envelope=method, properties=properties)
 
         for callback in self._on_return_callbacks:
-            tools.create_task(callback(msg), loop=self.loop)
+            tools.create_task(callback(msg))
 
     def add_close_callback(self, callback):
         """
@@ -254,7 +254,7 @@ class Channel(BaseChannel):
 
     @BaseChannel._ensure_channel_is_open
     @gen.coroutine
-    def _publish(self, queue_name, routing_key, body, properties, mandatory, immediate):
+    def _publish(self, queue_name, routing_key, body, properties, mandatory):
         """
         :type properties: :class:`pika.BasicProperties`
         """
@@ -271,7 +271,7 @@ class Channel(BaseChannel):
                 properties.headers['delivery-tag'] = str(self._delivery_tag)
 
             try:
-                self._channel.basic_publish(queue_name, routing_key, body, properties, mandatory, immediate)
+                self._channel.basic_publish(queue_name, routing_key, body, properties, mandatory)
             except (AttributeError, RuntimeError) as exc:
                 LOGGER.exception("Failed to send data to client (connection unexpectedly closed)")
                 self._on_channel_close(self._channel, exc)
@@ -282,7 +282,8 @@ class Channel(BaseChannel):
                 else:
                     publish_future.set_result(None)
 
-            raise gen.Return((yield publish_future))
+            result = yield publish_future
+            raise gen.Return(result)
 
     @BaseChannel._ensure_channel_is_open
     @gen.coroutine
@@ -336,11 +337,11 @@ class Channel(BaseChannel):
 
     @BaseChannel._ensure_channel_is_open
     @gen.coroutine
-    def set_qos(self, prefetch_count=0, prefetch_size=0, all_channels=False, timeout=None):
+    def set_qos(self, prefetch_count=0, prefetch_size=0, global_qos=False, timeout=None):
         """
         :type prefetch_count: int
         :type prefetch_size: int
-        :type all_channels: bool
+        :type global_qos: bool
         :type timeout: int
         """
 
@@ -350,7 +351,7 @@ class Channel(BaseChannel):
             self._channel.basic_qos(
                 prefetch_size=prefetch_size,
                 prefetch_count=prefetch_count,
-                all_channels=all_channels,
+                global_qos=global_qos,
                 callback=f.set_result,
             )
 

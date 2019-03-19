@@ -24,7 +24,7 @@ class Queue(BaseChannel):
     __slots__ = ('name', 'durable', 'exclusive', 'auto_delete', 'arguments', '_get_lock', '_channel', '__closing',
                  'declaration_result')
 
-    def __init__(self, loop, future_store, channel, name, durable, exclusive, auto_delete, arguments):
+    def __init__(self, loop, future_store, channel, name, durable, exclusive, auto_delete, arguments):  # pylint: disable=too-many-arguments
         """
         :type loop: :class:`tornado.ioloop.IOLoop`
         :type future_store: :class:`topika.FutureStore`
@@ -120,7 +120,7 @@ class Queue(BaseChannel):
 
         self._channel.queue_bind(
             queue=self.name,
-            exchange=Exchange._get_exchange_name(exchange),
+            exchange=Exchange._get_exchange_name(exchange),  # pylint: disable=protected-access
             routing_key=routing_key,
             arguments=arguments,
             callback=bind_future.set_result)
@@ -150,7 +150,7 @@ class Queue(BaseChannel):
 
         self._channel.queue_unbind(
             queue=self.name,
-            exchange=Exchange._get_exchange_name(exchange),
+            exchange=Exchange._get_exchange_name(exchange),  # pylint: disable=protected-access
             routing_key=routing_key,
             arguments=arguments,
             callback=unbind_future.set_result)
@@ -159,21 +159,21 @@ class Queue(BaseChannel):
 
     @BaseChannel._ensure_channel_is_open
     @tools.coroutine
-    def consume(self, callback, no_ack=False, exclusive=False, arguments=None, consumer_tag=None, timeout=None):
+    def consume(self, callback, no_ack=False, exclusive=False, arguments=None, consumer_tag=None, timeout=None):  # pylint: disable=too-many-arguments
         """ Start to consuming the :class:`Queue`.
 
         :param timeout: :class:`tornado.gen.TimeoutError` will be raises when the
                         Future was not finished after this time.
         :param callback: Consuming callback. Could be a coroutine.
         :type callback: :class:`FunctionType`
-        :param no_ack: if :class:`True` you don't need to call :func:`aio_pika.message.IncomingMessage.ack`
+        :param no_ack: if :class:`True` you don't need to call :func:`topika.message.IncomingMessage.ack`
         :type no_ack: bool
         :param exclusive: Makes this queue exclusive. Exclusive queues may only be accessed by the current
                           connection, and are deleted when that connection closes. Passive declaration of an
                           exclusive queue by other connections are not allowed.
         :type exclusive: bool
         :param arguments: extended arguments for pika
-        :type arguments: Optiona[dict]
+        :type arguments: Optional[dict]
         :param consumer_tag: optional consumer tag
 
         :raises tornado.gen.TimeoutError: when the consuming timeout period has elapsed.
@@ -197,7 +197,7 @@ class Queue(BaseChannel):
             )
 
             if tools.iscoroutinepartial(callback):
-                tools.create_task(callback(message), loop=self.loop)
+                tools.create_task(callback(message))
             else:
                 self.loop.add_callback(callback, message)
 
@@ -227,7 +227,7 @@ class Queue(BaseChannel):
         basic.cancel from the client). This allows clients to be notified of
         the loss of consumers due to events such as queue deletion.
 
-        :param consumer_tag: consumer tag returned by :func:`~aio_pika.Queue.consume`
+        :param consumer_tag: consumer tag returned by :func:`~topika.Queue.consume`
         :type consumer_tag: :class:`ConsumerTag`
         :param timeout: execution timeout
         :type timeout: int or NoneType
@@ -254,13 +254,13 @@ class Queue(BaseChannel):
         :rtype: :class:`Generator[Any, None, Optional[IncomingMessage]]`
         """
 
-        f = self._create_future(timeout)
+        get_future = self._create_future(timeout)
 
-        def _on_getempty(method_frame, *a, **kw):
+        def _on_getempty(method_frame, *_a, **_kw):
             if fail:
-                f.set_exception(QueueEmpty(method_frame))
+                get_future.set_exception(QueueEmpty(method_frame))
             else:
-                f.set_result(None)
+                get_future.set_result(None)
 
         def _on_getok(channel, envelope, props, body):
             message = IncomingMessage(
@@ -271,7 +271,7 @@ class Queue(BaseChannel):
                 no_ack=no_ack,
             )
 
-            f.set_result(message)
+            get_future.set_result(message)
 
         with (yield self._get_lock.acquire()), self._capture_empty(_on_getempty):
             LOGGER.debug("Awaiting message from queue: %r", self)
@@ -279,10 +279,10 @@ class Queue(BaseChannel):
             self._channel.basic_get(queue=self.name, callback=_on_getok, auto_ack=no_ack)
 
             try:
-                message = yield f
+                message = yield get_future
                 raise gen.Return(message)
             finally:
-                self._channel._on_getempty = None
+                self._channel._on_getempty = None  # pylint: disable=protected-access
 
     @contextlib.contextmanager
     def _capture_empty(self, callback):
@@ -467,4 +467,4 @@ class Queue(BaseChannel):
 #
 #     __anext__ = __next__
 
-__all__ = 'Queue', 'QueueIterator'
+__all__ = 'Queue'
